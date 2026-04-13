@@ -1,0 +1,33 @@
+import express, { Application, Request, Response } from "express";
+import cors from "cors";
+import cookieParser from "cookie-parser";
+import globalErrorHandler from "./app/middlewares/globalErrorHandler";
+import notFound from "./app/middlewares/notFound";
+import router from "./app/routes";
+
+const app: Application = express();
+
+app.use(
+  cors({
+    origin: ["*", "https://criti-check.vercel.app"],
+  })
+);
+app.use(express.json({ limit: "50mb" }));
+app.use(express.json());
+app.use(cookieParser());
+app.use(express.urlencoded({ extended: true }));
+
+app.use("/api", router);
+
+app.get("/", (req: Request, res: Response) => {
+  res.status(200).json({
+    status: "success",
+    message: "Hello there....",
+    data: null,
+  });
+});
+
+app.use(globalErrorHandler);
+app.use(notFound);
+
+export default app;

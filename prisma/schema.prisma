@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String          @id @default(uuid())
+  email             String          @unique
+  password          String
+  role              Role
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  status            AccountStatus   @default(ACTIVE)
+  isDeleted         Boolean         @default(false)
+  isCompleteProfile Boolean         @default(false)
+  user              User?
+  company           Company?
+  admin             Admin?
+  reviews           Review[]
+  votes             Vote[]
+  ReviewComment     ReviewComment[]
+  Payment           Payment[]
+
+  @@map("accounts")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String?
+  accountId    String   @unique
+  account      Account  @relation(fields: [accountId], references: [id])
+  profileImage String?
+  bio          String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  isDeleted    Boolean  @default(false)
+
+  @@map("users")
+}
+
+model Company {
+  id           String    @id @default(uuid())
+  name         String?
+  accountId    String    @unique
+  account      Account   @relation(fields: [accountId], references: [id])
+  products     Product[]
+  website      String?
+  companyImage String?
+  description  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  isDeleted    Boolean   @default(false)
+
+  @@map("companies")
+}
+
+model Admin {
+  id           String   @id @default(uuid())
+  name         String?
+  accountId    String   @unique
+  account      Account  @relation(fields: [accountId], references: [id])
+  profileImage String?
+  bio          String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  isDeleted    Boolean  @default(false)
+
+  @@map("admins")
+}
+
+model Product {
+  id          String          @id @default(uuid())
+  name        String
+  price       Float
+  description String?
+  imageUrl    String?
+  category    ProductCategory
+  isDeleted   Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  reviews     Review[]
+  companyId   String?
+  company     Company?        @relation(fields: [companyId], references: [id])
+
+  @@map("products")
+}
+
+model Review {
+  id             String          @id @default(uuid())
+  title          String
+  rating         Int
+  productId      String?
+  product        Product?        @relation(fields: [productId], references: [id])
+  purchaseSource String?
+  premiumPrice   Float?          @default(5.00)
+  previewContent String?
+  fullContent    String?
+  images         String[]
+  isPremium      Boolean         @default(false)
+  accountId      String
+  account        Account         @relation(fields: [accountId], references: [id])
+  status         ReviewStatus    @default(PENDING)
+  moderationNote String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  isDeleted      Boolean         @default(false)
+  votes          Vote[]
+  ReviewComment  ReviewComment[]
+  Payment        Payment[]
+
+  @@map("reviews")
+}
+
+model Vote {
+  id        String   @id @default(uuid())
+  reviewId  String
+  accountId String
+  upVote    Int
+  downVote  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  review    Review   @relation(fields: [reviewId], references: [id])
+  account   Account  @relation(fields: [accountId], references: [id])
+
+  @@map("votes")
+}
+
+model ReviewComment {
+  id        String   @id @default(uuid())
+  reviewId  String
+  accountId String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account   Account  @relation(fields: [accountId], references: [id])
+  review    Review   @relation(fields: [reviewId], references: [id])
+  isDeleted Boolean  @default(false)
+
+  @@map("review_comments")
+}
+
+model Payment {
+  id                 String        @id @default(uuid())
+  amount             Float
+  currency           String        @default("BDT")
+  status             PaymentStatus
+  accountId          String
+  paymentGatewayData Json?
+  account            Account       @relation(fields: [accountId], references: [id])
+  reviewId           String
+  review             Review        @relation(fields: [reviewId], references: [id])
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@map("payments")
+}
+
+enum Role {
+  USER
+  COMPANY
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProductCategory {
+  GADGETS
+  CLOTHING
+  BOOKS
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
