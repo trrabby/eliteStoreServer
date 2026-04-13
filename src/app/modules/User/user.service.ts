@@ -1,208 +1,238 @@
-import { reviewValidation } from "./../Review/review.validation";
-import status from "http-status";
-
 import { Request } from "express";
+import bcrypt from "bcrypt";
+import httpStatus from "http-status";
 import prisma from "../../../shared/prisma";
 import AppError from "../../errors/AppError";
-import uploadCloud from "../../../shared/cloudinary";
 import { Role } from "@prisma/client";
 
-// get all users
+// Register user
+const registerUser = async (payload: {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  phone?: string;
+}) => {
+  console.log(payload.email);
+  const isUserExists = await prisma.user.findUnique({
+    where: { email: payload.email },
+  });
+
+  if (isUserExists) {
+    throw new AppError(httpStatus.BAD_REQUEST, "Account already exists");
+  }
+
+  const hashedPassword = await bcrypt.hash(payload.password, 10);
+
+  const result = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        email: payload.email,
+        password: hashedPassword,
+        phone: payload.phone ?? null,
+        role: Role.CUSTOMER,
+      },
+    });
+
+    await tx.accountInfo.create({
+      data: {
+        userId: user.id,
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+      },
+    });
+
+    return user;
+  });
+
+  const { password, ...userWithoutPassword } = result;
+  return userWithoutPassword;
+};
+
+// Get all users — admin only
 const getAllUsers = async () => {
   const users = await prisma.user.findMany({
-    where: {
-      isDeleted: false,
-    },
-    include: {
-      account: {
+    where: { isActive: true },
+    select: {
+      id: true,
+      publicId: true,
+      email: true,
+      phone: true,
+      role: true,
+      isEmailVerified: true,
+      isBanned: true,
+      lastLoginAt: true,
+      createdAt: true,
+      accountInfo: {
         select: {
-          id: true,
-          email: true,
-          role: true,
-          isDeleted: true,
-          status: true,
-          isCompleteProfile: true,
+          firstName: true,
+          lastName: true,
+          displayName: true,
+          avatar: true,
         },
       },
     },
-  });
-  const count = await prisma.user.count({
-    where: {
-      isDeleted: false,
-    },
+    orderBy: { createdAt: "desc" },
   });
 
-  return {
-    count,
-    users,
-  };
+  const count = await prisma.user.count({ where: { isActive: true } });
+
+  return { count, users };
 };
 
-// find by id
-const getMyProfile = async (id: string) => {
+// Get profile by publicId
+const getMyProfile = async (publicId: string) => {
   const user = await prisma.user.findUnique({
-    where: {
-      id,
-      isDeleted: false,
+    where: { publicId, isActive: true },
+    select: {
+      id: true,
+      publicId: true,
+      email: true,
+      phone: true,
+      role: true,
+      isEmailVerified: true,
+      isPhoneVerified: true,
+      lastLoginAt: true,
+      createdAt: true,
+      accountInfo: true,
+      addresses: { where: { isDefault: true } },
+      vendorProfile: true,
     },
-    include: {
-      account: {
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  return user;
+};
+
+// Get user by email
+const getAccountByEmail = async (email: string) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+    select: {
+      id: true,
+      publicId: true,
+      email: true,
+      phone: true,
+      role: true,
+      isEmailVerified: true,
+      isBanned: true,
+      createdAt: true,
+      accountInfo: true,
+      orders: {
         select: {
           id: true,
-          email: true,
-          role: true,
-          isDeleted: true,
+          publicId: true,
+          orderNumber: true,
           status: true,
-          isCompleteProfile: true,
+          total: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      },
+      reviews: {
+        select: {
+          id: true,
+          rating: true,
+          title: true,
+          createdAt: true,
         },
       },
     },
   });
+
   if (!user) {
-    throw new AppError(status.NOT_FOUND, "User not found");
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
   }
 
   return user;
 };
 
-// find by email
-const getAccountByEmail = async (email: string) => {
-  const user = await prisma.account.findUnique({
-    where: {
-      email,
-      isDeleted: false,
-    },
-    include: {
-      user: true,
-      reviews: true,
-      votes: true,
-      ReviewComment: true,
-      Payment: true,
-    },
-  });
-  if (!user) {
-    throw new AppError(status.NOT_FOUND, "User not found");
-  }
-
-  return user;
-};
-
-//make Admin
-const makeAdmin = async (id: string) => {
-  const user = await prisma.account.findUnique({
-    where: {
-      id: id,
-      isDeleted: false,
-    },
+// Make admin
+const makeAdmin = async (publicId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { publicId, isActive: true },
   });
 
   if (!user) {
-    throw new AppError(status.NOT_FOUND, "User not found");
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
   }
 
-  const updatedAccount = await prisma.account.update({
-    where: {
-      id: id,
-    },
-    data: {
-      role: Role.ADMIN,
-    },
+  const updated = await prisma.user.update({
+    where: { publicId },
+    data: { role: Role.ADMIN },
+    select: { publicId: true, email: true, role: true },
   });
 
-  return {
-    userId: user.id,
-    newRole: updatedAccount.role,
-  };
+  return updated;
 };
 
-// update user
+// Update profile
 const updateMyProfile = async (email: string, req: Request) => {
-  // find account and user account
-  const isAccountExist = await prisma.account.findUnique({
-    where: {
-      email,
-      isDeleted: false,
-    },
-    include: {
-      user: true,
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+    include: { accountInfo: true },
+  });
+  // console.log(user);
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+  const data = JSON.parse(req.body.data);
+  // console.log(data);
+  // if image uploaded via multer, req.body.avatar is already the cloudinary url
+  const { firstName, lastName, displayName, bio, dateOfBirth, gender } = data;
+  const avatar = req.file?.path;
+
+  const updated = await prisma.accountInfo.update({
+    where: { userId: user.id },
+    data: {
+      ...(firstName && { firstName }),
+      ...(lastName && { lastName }),
+      ...(displayName && { displayName }),
+      ...(bio && { bio }),
+      ...(avatar && { avatar }),
+      ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) }),
+      ...(gender && { gender }),
     },
   });
-  if (!isAccountExist) {
-    throw new AppError(status.NOT_FOUND, "User not found");
-  }
 
-  // main update logic
-  if (req.file) {
-    const uploadedImage = await uploadCloud(req.file);
-    req.body.profileImage = uploadedImage?.secure_url;
-  }
-
-  const updateuserInfo = await prisma.$transaction(async (tClient) => {
-    const updateData = await tClient.user.update({
-      where: {
-        id: isAccountExist?.user?.id,
-      },
-      data: req.body,
-      include: {
-        account: true,
-      },
-    });
-
-    await tClient.account.update({
-      where: {
-        email,
-      },
-      data: {
-        isCompleteProfile: true,
-      },
-    });
-    return updateData;
-  });
-  return updateuserInfo;
+  return updated;
 };
 
-// delete user
-const deleteMyProfile = async (email: string) => {
-  const isAccountExist = await prisma.account.findUnique({
-    where: {
-      email,
-      isDeleted: false,
-    },
-    include: {
-      user: true,
-    },
+// Soft delete
+const deleteAProfile = async (publicId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { publicId, isActive: true },
   });
-  if (!isAccountExist) {
-    throw new AppError(status.NOT_FOUND, "Account not found");
+  if (user?.role === Role.SUPER_ADMIN) {
+    throw new AppError(
+      httpStatus.FORBIDDEN,
+      "You cannot delete a SUPER_ADMIN account buggers!",
+    );
   }
 
-  return await prisma.$transaction(async (tClient) => {
-    const deleteUser = await tClient.user.update({
-      where: {
-        id: isAccountExist?.user?.id,
-      },
-      data: {
-        isDeleted: true,
-      },
-    });
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
 
-    await tClient.account.update({
-      where: {
-        email,
-      },
-      data: {
-        isDeleted: true,
-      },
-    });
-    return { isDeleted: deleteUser.isDeleted };
+  await prisma.user.update({
+    where: { publicId },
+    data: { isActive: false },
   });
+
+  return { isDeleted: true };
 };
 
 export const userService = {
+  registerUser,
   getAllUsers,
   getMyProfile,
+  getAccountByEmail,
   makeAdmin,
   updateMyProfile,
-  deleteMyProfile,
-  getAccountByEmail,
+  deleteAProfile,
 };

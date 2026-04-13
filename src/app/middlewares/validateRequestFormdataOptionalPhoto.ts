@@ -1,13 +1,14 @@
 import { NextFunction, Request, Response } from "express";
 import { AnyZodObject } from "zod";
-import catchAsync from "../../shared/catchAsync";
+import catchAsync from "../utils/catchAsync";
 
-const validateRequestFormdata = (schema: AnyZodObject) => {
+const validateRequestFormdataOptionalPhoto = (schema: AnyZodObject) => {
   return catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const Data = JSON.parse(req.body.data);
-    const image = req?.file?.path;
-    const ParsedData = { ...Data, image };
-    console.log({ fromValidateRequest: ParsedData });
+    const imgUrl = req?.file?.path;
+    const ParsedData = { ...Data, imgUrl };
+
+    // console.log(ParsedData);
     await schema.parseAsync({
       body: ParsedData,
       cookies: req.cookies,
@@ -17,4 +18,4 @@ const validateRequestFormdata = (schema: AnyZodObject) => {
   });
 };
 
-export default validateRequestFormdata;
+export default validateRequestFormdataOptionalPhoto;

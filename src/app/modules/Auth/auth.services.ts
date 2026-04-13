@@ -8,270 +8,300 @@ import config from "../../../config";
 import emailSender from "../../../shared/emailSender";
 import { Role } from "@prisma/client";
 
-
-// register user 
-const registerUser = async (payload: any) => {
-  if (!payload.email || !payload.password) {
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      "Email and password are required"
-    );
-  }
-  const isAccountExists = await prisma.account.findUnique({
-    where: { email: payload.email },
-  });
-
-  if (isAccountExists) {
-    throw new AppError(httpStatus.BAD_REQUEST, "Account already exists");
-  }
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-  if (!emailRegex.test(payload.email)) {
-    throw new AppError(httpStatus.BAD_REQUEST, "Invalid email format");
-  }
-
-  const hashedPassword = await bcrypt.hash(payload.password, 10);
-
-  const accountData = {
-    email: payload.email,
-    password: hashedPassword,
-    role: Role.USER,
-  };
-  const result = await prisma.$transaction(async (tx) => {
-    const createdAccount = await tx.account.create({ data: accountData });
-    const userData = {
-      name: payload.name,
-      accountId: createdAccount.id,
-    };
-    await tx.user.create({ data: userData });
-    return createdAccount;
-  });
-  return result;
-};
-
-
 // Login user
 const loginUser = async (payload: { email: string; password: string }) => {
-  const isUserExists = await prisma.account.findUnique({
-    where: { email: payload.email, isDeleted: false },
+  const user = await prisma.user.findUnique({
+    where: { email: payload.email, isActive: true, isBanned: false },
   });
-  if (!isUserExists) {
+
+  if (!user) {
     throw new AppError(httpStatus.NOT_FOUND, "Account not found");
   }
 
-  const isPasswordMatch = await bcrypt.compare(
-    payload.password,
-    isUserExists.password
-  );
+  if (!user.password) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Please login with your OAuth provider",
+    );
+  }
+
+  const isPasswordMatch = await bcrypt.compare(payload.password, user.password);
 
   if (!isPasswordMatch) {
     throw new AppError(httpStatus.UNAUTHORIZED, "Invalid password");
   }
 
-  const { password, ...userData } = isUserExists;
+  // update lastLoginAt
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
 
   const accessToken = jwtHelpers.generateToken(
-    {
-      email: userData.email,
-      role: userData.role,
-    },
+    { email: user.email, role: user.role, publicId: user.publicId },
     config.jwt_secret as Secret,
-    config.expires_in as string
+    config.expires_in as string,
   );
 
   const refreshToken = jwtHelpers.generateToken(
-    {
-      email: userData.email,
-      role: userData.role,
-    },
+    { email: user.email, role: user.role, publicId: user.publicId },
     config.refresh_token_secret as Secret,
-    config.refresh_token_expires_in as string
+    config.refresh_token_expires_in as string,
   );
+
+  return { accessToken, refreshToken };
+};
+
+// Register or Login via OAuth provider (upsert flow)
+const loginOrRegisterViaProvider = async (payload: {
+  email: string;
+  firstName: string;
+  lastName: string;
+  avatar?: string;
+  provider: string; // "google" | "github"
+}) => {
+  // check if user already exists
+  let user = await prisma.user.findUnique({
+    where: { email: payload.email },
+  });
+
+  // if not exists — create user + accountInfo + oauthAccount in one transaction
+  if (!user) {
+    user = await prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
+        data: {
+          email: payload.email,
+          password: null,
+          role: Role.CUSTOMER,
+          isEmailVerified: true,
+        },
+      });
+
+      await tx.accountInfo.create({
+        data: {
+          user: { connect: { id: newUser.id } }, // explicit connect
+          firstName: payload.firstName || payload.email.split("@")[0], // fallback to email prefix
+          lastName: payload.lastName || "-", // fallback to "-" since required
+          avatar: payload.avatar ?? null,
+        },
+      });
+
+      await tx.oAuthAccount.create({
+        data: {
+          user: { connect: { id: newUser.id } },
+          provider: payload.provider,
+          providerUid: payload.email,
+        },
+      });
+
+      return newUser;
+    });
+  }
+
+  // either way — check account is usable
+  if (!user.isActive) {
+    throw new AppError(
+      httpStatus.FORBIDDEN,
+      "This account has been deactivated",
+    );
+  }
+
+  if (user.isBanned) {
+    throw new AppError(httpStatus.FORBIDDEN, "This account has been banned");
+  }
+
+  // update last login
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
+
+  const jwtPayload = {
+    email: user.email,
+    role: user.role,
+    publicId: user.publicId,
+  };
+
+  const accessToken = jwtHelpers.generateToken(
+    jwtPayload,
+    config.jwt_secret as Secret,
+    config.expires_in as string,
+  );
+
+  const refreshToken = jwtHelpers.generateToken(
+    jwtPayload,
+    config.refresh_token_secret as Secret,
+    config.refresh_token_expires_in as string,
+  );
+
   return {
-    accessToken: accessToken,
-    refreshToken: refreshToken,
+    isNewUser: !user, // tells controller whether it was a register or login
+    accessToken,
+    refreshToken,
   };
 };
 
-// get my profile
+// Get my profile
 const getMyProfile = async (email: string) => {
-  const user = await prisma.account.findUnique({
-    where: { email: email, isDeleted: false },
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true, isBanned: false },
     include: {
-      company: true,
-      user: true,
-      admin: true,
+      accountInfo: true,
+      addresses: { where: { isDefault: true } },
+      vendorProfile: true,
     },
   });
 
   if (!user) {
     throw new AppError(httpStatus.NOT_FOUND, "User not found");
   }
-  return user;
+
+  const { password, ...userWithoutPassword } = user;
+  return userWithoutPassword;
 };
 
-// refresh token
+// Refresh token
 const refreshToken = async (token: string) => {
-  let decodedData;
+  let decodedData: JwtPayload;
   try {
     decodedData = jwtHelpers.verifyToken(
       token,
-      config.refresh_token_secret as Secret
+      config.refresh_token_secret as Secret,
     );
-  } catch (err) {
-    throw new Error("You are not authorized!");
+  } catch {
+    throw new AppError(httpStatus.UNAUTHORIZED, "You are not authorized!");
   }
 
-  const userData = await prisma.account.findUniqueOrThrow({
-    where: {
-      email: decodedData.email,
-      isDeleted: false,
-    },
+  const user = await prisma.user.findUnique({
+    where: { email: decodedData.email, isActive: true, isBanned: false },
   });
 
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
   const accessToken = jwtHelpers.generateToken(
-    {
-      email: userData.email,
-      role: userData.role,
-    },
+    { email: user.email, role: user.role, publicId: user.publicId },
     config.jwt_secret as Secret,
-    config.expires_in as string
+    config.expires_in as string,
   );
 
   return accessToken;
 };
 
-// change password
+// Change password
 const changePassword = async (
   user: JwtPayload,
-  payload: {
-    oldPassword: string;
-    newPassword: string;
-  }
+  payload: { oldPassword: string; newPassword: string },
 ) => {
-  const isExistAccount = await prisma.account.findUnique({
-    where: {
-      email: user.email,
-      isDeleted: false,
-    },
+  const existingUser = await prisma.user.findUnique({
+    where: { email: user.email, isActive: true, isBanned: false },
   });
-  if (!isExistAccount) {
-    throw new AppError(httpStatus.NOT_FOUND, "Account not found !");
+
+  if (!existingUser) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
   }
 
-  const isCorrectPassword: boolean = await bcrypt.compare(
+  if (!existingUser.password) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Cannot change password for OAuth accounts",
+    );
+  }
+
+  const isCorrectPassword = await bcrypt.compare(
     payload.oldPassword,
-    isExistAccount.password
+    existingUser.password,
   );
 
   if (!isCorrectPassword) {
     throw new AppError(httpStatus.UNAUTHORIZED, "Old password is incorrect");
   }
 
-  const hashedPassword: string = await bcrypt.hash(payload.newPassword, 10);
+  const hashedPassword = await bcrypt.hash(payload.newPassword, 10);
 
-  await prisma.account.update({
-    where: {
-      email: isExistAccount.email,
-    },
-    data: {
-      password: hashedPassword,
-    },
+  await prisma.user.update({
+    where: { email: existingUser.email },
+    data: { password: hashedPassword },
   });
 
-  return "Password update is successful.";
+  return "Password updated successfully.";
 };
 
-
-/// forget password
-const forgetPassword = async (email: string) => {
-  const isAccountExists = await prisma.account.findUnique({
-    where: {
-      email: email,
-      isDeleted: false,
-    },
+// Forget password
+const forgetPassword = async (payload: { email: string }) => {
+  const user = await prisma.user.findUnique({
+    where: { email: payload.email, isActive: true },
   });
 
-  if (!isAccountExists) {
+  if (!user) {
     throw new AppError(httpStatus.NOT_FOUND, "Account not found");
   }
 
   const resetToken = jwtHelpers.generateToken(
-    {
-      email: isAccountExists.email,
-      role: isAccountExists.role,
-    },
+    { email: user.email, role: user.role },
     config.reset_pass_token as Secret,
-    config.reset_pass_token_expires_in as string
+    config.reset_pass_token_expires_in as string,
   );
 
-  const resetPassLink = `${config.reset_pass_link}?token=${resetToken}&email=${isAccountExists.email}`;
+  const resetPassLink = `${config.reset_pass_link}?token=${resetToken}&email=${user.email}`;
 
   await emailSender(
-    email,
+    payload.email,
     `
-        <div>
-            <p>Dear User,</p>
-            <p>Your password reset link 
-                <a href=${resetPassLink}>
-                    <button>
-                        Reset Password
-                    </button>
-                </a>
-            </p>
-
-        </div>
-        `
+    <div>
+      <p>Dear User,</p>
+      <p>Your password reset link:
+        <a href="${resetPassLink}">
+          <button>Reset Password</button>
+        </a>
+      </p>
+    </div>
+    `,
   );
-
-  return "Reset password link sent to your email!";
 };
 
+// Reset password
 const resetPassword = async (
   token: string,
   email: string,
-  newPassword: string
+  newPassword: string,
 ) => {
   let decodedData: JwtPayload;
   try {
     decodedData = jwtHelpers.verifyToken(
       token,
-      config.reset_pass_token as Secret
+      config.reset_pass_token as Secret,
     );
-  } catch (err) {
+  } catch {
     throw new AppError(httpStatus.UNAUTHORIZED, "Invalid or expired token");
   }
 
-  const isAccountExists = await prisma.account.findUnique({
-    where: {
-      email: decodedData.email,
-      isDeleted: false,
-    },
+  const user = await prisma.user.findUnique({
+    where: { email: decodedData.email, isActive: true },
   });
-  if (!isAccountExists) {
-    throw new AppError(httpStatus.NOT_FOUND, "Account not found!!");
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "Account not found");
   }
-  if (isAccountExists.email !== email) {
+
+  if (user.email !== email) {
     throw new AppError(httpStatus.UNAUTHORIZED, "Invalid email");
   }
 
-  const hashedPassword: string = await bcrypt.hash(newPassword, 10);
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-  await prisma.account.update({
-    where: {
-      email: isAccountExists.email,
-    },
-    data: {
-      password: hashedPassword,
-    },
+  await prisma.user.update({
+    where: { email: user.email },
+    data: { password: hashedPassword },
   });
 
   return "Password reset successfully!";
 };
 
 export const AuthService = {
-  registerUser,
   loginUser,
+  loginOrRegisterViaProvider,
   getMyProfile,
   refreshToken,
   changePassword,

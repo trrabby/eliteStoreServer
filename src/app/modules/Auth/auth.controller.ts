@@ -1,18 +1,14 @@
 import config from "../../../config";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
+
+import AppError from "../../errors/AppError";
+import {
+  verifyGithubToken,
+  verifyGoogleToken,
+} from "../../utils/ProvidersTokenVerify";
 import { AuthService } from "./auth.services";
 import httpStatus from "http-status";
-
-const registerUser = catchAsync(async (req, res) => {
-  const result = await AuthService.registerUser(req?.body);
-  sendResponse(res, {
-    statusCode: httpStatus.CREATED,
-    success: true,
-    message: "User registered successfully!",
-    data: result,
-  });
-});
 
 const loginUser = catchAsync(async (req, res) => {
   const result = await AuthService.loginUser(req.body);
@@ -27,6 +23,99 @@ const loginUser = catchAsync(async (req, res) => {
     data: {
       accessToken: result.accessToken,
     },
+  });
+});
+
+const loginOrRegisterViaGoogle = catchAsync(async (req, res) => {
+  const providerToken = req.headers.authorization;
+
+  if (!providerToken) {
+    throw new AppError(httpStatus.UNAUTHORIZED, "No token provided");
+  }
+
+  const DataFromProvider = await verifyGoogleToken(providerToken);
+  const {
+    email,
+    name: firstName,
+    given_name: lastName,
+    imgUrl: avatar,
+    verified_email,
+  }: any = DataFromProvider;
+
+  if (!verified_email) {
+    throw new AppError(
+      httpStatus.UNAUTHORIZED,
+      "Google account is not verified",
+    );
+  }
+
+  if (!email) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Could not retrieve email from Google",
+    );
+  }
+
+  const result = await AuthService.loginOrRegisterViaProvider({
+    email,
+    firstName,
+    lastName,
+    avatar,
+    provider: "google",
+  });
+
+  res.cookie("refreshToken", result.refreshToken, {
+    secure: config.env === "production",
+    httpOnly: true,
+  });
+
+  sendResponse(res, {
+    statusCode: result.isNewUser ? httpStatus.CREATED : httpStatus.OK,
+    success: true,
+    message: result.isNewUser
+      ? "Account created and logged in via Google!"
+      : "Logged in successfully via Google!",
+    data: { accessToken: result.accessToken },
+  });
+});
+
+const loginOrRegisterViaGithub = catchAsync(async (req, res) => {
+  const providerToken = req.headers.authorization;
+
+  if (!providerToken) {
+    throw new AppError(httpStatus.UNAUTHORIZED, "No token provided");
+  }
+
+  const DataFromProvider = await verifyGithubToken(providerToken);
+  const { email, firstName, lastName, avatar }: any = DataFromProvider;
+
+  if (!email) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "GitHub account has no public email. Please add a public email to your GitHub profile.",
+    );
+  }
+
+  const result = await AuthService.loginOrRegisterViaProvider({
+    email,
+    firstName,
+    lastName,
+    avatar,
+    provider: "github",
+  });
+
+  res.cookie("refreshToken", result.refreshToken, {
+    secure: config.env === "production",
+    httpOnly: true,
+  });
+
+  sendResponse(res, {
+    statusCode: result.isNewUser ? httpStatus.CREATED : httpStatus.OK,
+    success: true,
+    message: result.isNewUser
+      ? "Account created and logged in via GitHub!"
+      : "Logged in successfully via GitHub!",
+    data: { accessToken: result.accessToken },
   });
 });
 
@@ -87,9 +176,10 @@ const resetPassword = catchAsync(async (req, res) => {
 });
 
 export const AuthController = {
-  registerUser,
-  getMyProfile,
   loginUser,
+  loginOrRegisterViaGoogle,
+  loginOrRegisterViaGithub,
+  getMyProfile,
   refreshToken,
   changePassword,
   forgetPassword,
