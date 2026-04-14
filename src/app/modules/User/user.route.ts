@@ -52,4 +52,47 @@ router.patch(
   UserController.deleteAProfile,
 );
 
+// ─────────────────────────────────────────
+// ADDRESS ROUTES
+// ─────────────────────────────────────────
+
+router.post(
+  "/add-addresses",
+  auth(Role.ADMIN, Role.SUPER_ADMIN, Role.CUSTOMER, Role.VENDOR),
+  multerUpload.none(),
+  validateRequestFormdataOptionalPhoto(userValidation.addAddress),
+  UserController.addAddress,
+);
+
+router.get(
+  "/addresses",
+  auth(Role.ADMIN, Role.SUPER_ADMIN, Role.CUSTOMER, Role.VENDOR),
+  UserController.getMyAddresses,
+);
+
+router.get(
+  "/addresses/:addressId",
+  auth(Role.ADMIN, Role.SUPER_ADMIN, Role.CUSTOMER, Role.VENDOR),
+  UserController.getSingleAddress,
+);
+
+router.patch(
+  "/addresses/:addressId",
+  multerUpload.none(),
+  auth(Role.ADMIN, Role.SUPER_ADMIN, Role.CUSTOMER, Role.VENDOR),
+  validateRequestFormdataOptionalPhoto(userValidation.updateAddress),
+  UserController.updateAddress,
+);
+
+router.patch(
+  "/addresses/:addressId/set-default",
+  auth(Role.ADMIN, Role.SUPER_ADMIN, Role.CUSTOMER, Role.VENDOR),
+  UserController.setDefaultAddress,
+);
+
+router.delete(
+  "/addresses/:addressId",
+  auth(Role.ADMIN, Role.SUPER_ADMIN, Role.CUSTOMER, Role.VENDOR),
+  UserController.deleteAddress,
+);
 export const UserRoutes = router;

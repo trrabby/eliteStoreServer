@@ -9,24 +9,24 @@ const auth = (...roles: string[]) => {
   return async (
     req: Request & { user?: any },
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       const token = req.headers.authorization;
 
       if (!token) {
-        throw new AppError(httpStatus.UNAUTHORIZED, "you are not authorize");
+        throw new AppError(httpStatus.UNAUTHORIZED, "you are not authorized");
       }
 
       const verifiedUser = jwtHelpers.verifyToken(
         token,
-        config.jwt_secret as Secret
+        config.jwt_secret as Secret,
       );
 
       req.user = verifiedUser;
 
       if (roles.length && !roles.includes(verifiedUser.role)) {
-        throw new AppError(httpStatus.UNAUTHORIZED, "you are not authorize");
+        throw new AppError(httpStatus.UNAUTHORIZED, "you are not authorized");
       }
 
       next();

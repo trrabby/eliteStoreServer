@@ -227,6 +227,252 @@ const deleteAProfile = async (publicId: string) => {
   return { isDeleted: true };
 };
 
+// ─────────────────────────────────────────
+// ADDRESS
+// ─────────────────────────────────────────
+
+// add address
+const addAddress = async (
+  email: string,
+  payload: {
+    type?: "HOME" | "OFFICE" | "BILLING" | "SHIPPING" | "OTHER";
+    label?: string;
+    fullName: string;
+    phone: string;
+    addressLine1: string;
+    addressLine2?: string;
+    city_district: string;
+    postalCode?: string;
+    country?: string;
+    isDefault?: boolean;
+    landmark?: string;
+    latitude?: number;
+    longitude?: number;
+  },
+) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  // if this address is set as default
+  // unset all existing defaults first
+  if (payload.isDefault) {
+    await prisma.address.updateMany({
+      where: { userId: user.id },
+      data: { isDefault: false },
+    });
+  }
+
+  // if this is the user's first address — make it default automatically
+  const addressCount = await prisma.address.count({
+    where: { userId: user.id },
+  });
+
+  const address = await prisma.address.create({
+    data: {
+      userId: user.id,
+      type: payload.type ?? "HOME",
+      label: payload.label ?? null,
+      fullName: payload.fullName,
+      phone: payload.phone,
+      addressLine1: payload.addressLine1,
+      addressLine2: payload.addressLine2 ?? null,
+      city_district: payload.city_district,
+      postalCode: payload.postalCode ?? null,
+      country: payload.country ?? "BD",
+      isDefault: payload.isDefault ?? addressCount === 0, // auto default if first
+      landmark: payload.landmark ?? null,
+      latitude: payload.latitude ?? null,
+      longitude: payload.longitude ?? null,
+    },
+  });
+
+  return address;
+};
+
+// get all addresses for logged in user
+const getMyAddresses = async (email: string) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  const addresses = await prisma.address.findMany({
+    where: { userId: user.id },
+    orderBy: [
+      { isDefault: "desc" }, // default address always first
+      { createdAt: "desc" },
+    ],
+  });
+
+  return addresses;
+};
+
+// get single address
+const getSingleAddress = async (email: string, addressId: number) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  const address = await prisma.address.findFirst({
+    where: {
+      id: addressId,
+      userId: user.id, // ensures user can only access their own
+    },
+  });
+
+  if (!address) {
+    throw new AppError(httpStatus.NOT_FOUND, "Address not found");
+  }
+
+  return address;
+};
+
+// update address
+const updateAddress = async (
+  email: string,
+  addressId: number,
+  payload: Partial<{
+    type: "HOME" | "OFFICE" | "BILLING" | "SHIPPING" | "OTHER";
+    label: string;
+    fullName: string;
+    phone: string;
+    addressLine1: string;
+    addressLine2: string;
+    city_district: string;
+    postalCode: string;
+    country: string;
+    isDefault: boolean;
+    landmark: string;
+    latitude: number;
+    longitude: number;
+  }>,
+) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  const address = await prisma.address.findFirst({
+    where: { id: addressId, userId: user.id },
+  });
+
+  if (!address) {
+    throw new AppError(httpStatus.NOT_FOUND, "Address not found");
+  }
+
+  // if setting this as default — unset others first
+  if (payload.isDefault) {
+    await prisma.address.updateMany({
+      where: { userId: user.id },
+      data: { isDefault: false },
+    });
+  }
+
+  const updated = await prisma.address.update({
+    where: { id: addressId },
+    data: payload,
+  });
+
+  return updated;
+};
+
+// set default address
+const setDefaultAddress = async (email: string, addressId: number) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  const address = await prisma.address.findFirst({
+    where: { id: addressId, userId: user.id },
+  });
+
+  if (!address) {
+    throw new AppError(httpStatus.NOT_FOUND, "Address not found");
+  }
+
+  // transaction — unset all then set the target
+  await prisma.$transaction(async (tx) => {
+    await tx.address.updateMany({
+      where: { userId: user.id },
+      data: { isDefault: false },
+    });
+    await tx.address.update({
+      where: { id: addressId },
+      data: { isDefault: true },
+    });
+  });
+
+  return "Default address updated";
+};
+
+// delete address
+const deleteAddress = async (email: string, addressId: number) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  const address = await prisma.address.findFirst({
+    where: { id: addressId, userId: user.id },
+  });
+
+  if (!address) {
+    throw new AppError(httpStatus.NOT_FOUND, "Address not found");
+  }
+
+  // block deletion if it's the only address
+  const addressCount = await prisma.address.count({
+    where: { userId: user.id },
+  });
+
+  if (addressCount === 1) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "You must have at least one address. Update it instead of deleting.",
+    );
+  }
+
+  await prisma.address.delete({ where: { id: addressId } });
+
+  // if deleted address was default — auto promote newest remaining
+  if (address.isDefault) {
+    const next = await prisma.address.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+    });
+    if (next) {
+      await prisma.address.update({
+        where: { id: next.id },
+        data: { isDefault: true },
+      });
+    }
+  }
+
+  return "Address deleted successfully";
+};
+
 export const userService = {
   registerUser,
   getAllUsers,
@@ -235,4 +481,11 @@ export const userService = {
   makeAdmin,
   updateMyProfile,
   deleteAProfile,
+  // address
+  addAddress,
+  getMyAddresses,
+  getSingleAddress,
+  updateAddress,
+  setDefaultAddress,
+  deleteAddress,
 };

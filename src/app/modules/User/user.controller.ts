@@ -80,6 +80,82 @@ const deleteAProfile = catchAsync(async (req, res) => {
   });
 });
 
+// ─────────────────────────────────────────
+// ADDRESS
+// ─────────────────────────────────────────
+
+const addAddress = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
+  const data = JSON.parse(req.body.data);
+  const result = await userService.addAddress(email, data);
+  sendResponse(res, {
+    statusCode: httpStatus.CREATED,
+    success: true,
+    message: "Address added successfully",
+    data: result,
+  });
+});
+
+const getMyAddresses = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
+  const result = await userService.getMyAddresses(email);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Addresses retrieved successfully",
+    data: result,
+  });
+});
+
+const getSingleAddress = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
+  const addressId = Number(req.params.addressId);
+  const result = await userService.getSingleAddress(email, addressId);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Address retrieved successfully",
+    data: result,
+  });
+});
+
+const updateAddress = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
+  const addressId = Number(req.params.addressId);
+  const data = JSON.parse(req.body.data);
+  const result = await userService.updateAddress(email, addressId, data);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Address updated successfully",
+    data: result,
+  });
+});
+
+const setDefaultAddress = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
+  const addressId = Number(req.params.addressId);
+  const result = await userService.setDefaultAddress(email, addressId);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Default address updated successfully",
+    data: result,
+  });
+});
+
+const deleteAddress = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
+  const addressId = Number(req.params.addressId);
+  await userService.deleteAddress(email, addressId);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Address deleted successfully",
+    data: null,
+  });
+});
+
 export const UserController = {
   registerUser,
   getAllUsers,
@@ -88,4 +164,11 @@ export const UserController = {
   getAnAccountByEmail,
   updateMyProfile,
   deleteAProfile,
+  // address
+  addAddress,
+  getMyAddresses,
+  getSingleAddress,
+  updateAddress,
+  setDefaultAddress,
+  deleteAddress,
 };

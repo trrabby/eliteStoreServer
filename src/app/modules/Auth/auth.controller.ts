@@ -11,18 +11,16 @@ import { AuthService } from "./auth.services";
 import httpStatus from "http-status";
 
 const loginUser = catchAsync(async (req, res) => {
-  const result = await AuthService.loginUser(req.body);
+  const result = await AuthService.loginUser(req.body, req); // ← pass req
   res.cookie("refreshToken", result.refreshToken, {
-    secure: config.env == "development",
+    secure: config.env === "production",
     httpOnly: true,
   });
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: "User is logged in successful !",
-    data: {
-      accessToken: result.accessToken,
-    },
+    message: "User logged in successfully!",
+    data: { accessToken: result.accessToken },
   });
 });
 
@@ -56,13 +54,16 @@ const loginOrRegisterViaGoogle = catchAsync(async (req, res) => {
     );
   }
 
-  const result = await AuthService.loginOrRegisterViaProvider({
-    email,
-    firstName,
-    lastName,
-    avatar,
-    provider: "google",
-  });
+  const result = await AuthService.loginOrRegisterViaProvider(
+    {
+      email,
+      firstName,
+      lastName,
+      avatar,
+      provider: "google",
+    },
+    req,
+  );
 
   res.cookie("refreshToken", result.refreshToken, {
     secure: config.env === "production",
@@ -96,13 +97,16 @@ const loginOrRegisterViaGithub = catchAsync(async (req, res) => {
     );
   }
 
-  const result = await AuthService.loginOrRegisterViaProvider({
-    email,
-    firstName,
-    lastName,
-    avatar,
-    provider: "github",
-  });
+  const result = await AuthService.loginOrRegisterViaProvider(
+    {
+      email,
+      firstName,
+      lastName,
+      avatar,
+      provider: "github",
+    },
+    req,
+  );
 
   res.cookie("refreshToken", result.refreshToken, {
     secure: config.env === "production",
@@ -175,6 +179,17 @@ const resetPassword = catchAsync(async (req, res) => {
   });
 });
 
+const logout = catchAsync(async (req, res) => {
+  await AuthService.logout(req);
+  res.clearCookie("refreshToken");
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Logged out successfully",
+    data: null,
+  });
+});
+
 export const AuthController = {
   loginUser,
   loginOrRegisterViaGoogle,
@@ -184,4 +199,5 @@ export const AuthController = {
   changePassword,
   forgetPassword,
   resetPassword,
+  logout,
 };

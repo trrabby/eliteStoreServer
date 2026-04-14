@@ -7,9 +7,35 @@ import { jwtHelpers } from "../../../helpers/jwtHalpers";
 import config from "../../../config";
 import emailSender from "../../../shared/emailSender";
 import { Role } from "@prisma/client";
+import { Request } from "express";
+
+const createSession = async (
+  userId: number,
+  token: string, // ← receive the JWT directly
+  req: Request,
+) => {
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7); // 7 days
+
+  await prisma.session.create({
+    data: {
+      userId,
+      token, // ← store the JWT
+      deviceInfo: req.headers["user-agent"]?.substring(0, 255) ?? null,
+      ipAddress:
+        (req.headers["x-forwarded-for"] as string)?.split(",")[0] ??
+        req.socket.remoteAddress ??
+        null,
+      userAgent: req.headers["user-agent"] ?? null,
+      expiresAt,
+    },
+  });
+};
 
 // Login user
-const loginUser = async (payload: { email: string; password: string }) => {
+const loginUser = async (
+  payload: { email: string; password: string },
+  req: Request,
+) => {
   const user = await prisma.user.findUnique({
     where: { email: payload.email, isActive: true, isBanned: false },
   });
@@ -31,35 +57,47 @@ const loginUser = async (payload: { email: string; password: string }) => {
     throw new AppError(httpStatus.UNAUTHORIZED, "Invalid password");
   }
 
-  // update lastLoginAt
   await prisma.user.update({
     where: { id: user.id },
     data: { lastLoginAt: new Date() },
   });
 
+  const jwtPayload = {
+    email: user.email,
+    role: user.role,
+    publicId: user.publicId,
+  };
+
   const accessToken = jwtHelpers.generateToken(
-    { email: user.email, role: user.role, publicId: user.publicId },
+    jwtPayload,
     config.jwt_secret as Secret,
     config.expires_in as string,
   );
 
   const refreshToken = jwtHelpers.generateToken(
-    { email: user.email, role: user.role, publicId: user.publicId },
+    jwtPayload,
     config.refresh_token_secret as Secret,
     config.refresh_token_expires_in as string,
   );
+
+  // create session
+  await createSession(user.id, accessToken, req);
 
   return { accessToken, refreshToken };
 };
 
 // Register or Login via OAuth provider (upsert flow)
-const loginOrRegisterViaProvider = async (payload: {
-  email: string;
-  firstName: string;
-  lastName: string;
-  avatar?: string;
-  provider: string; // "google" | "github"
-}) => {
+
+const loginOrRegisterViaProvider = async (
+  payload: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    avatar?: string;
+    provider: string; // "google" | "github"
+  },
+  req: Request,
+) => {
   // check if user already exists
   let user = await prisma.user.findUnique({
     where: { email: payload.email },
@@ -133,6 +171,9 @@ const loginOrRegisterViaProvider = async (payload: {
     config.refresh_token_secret as Secret,
     config.refresh_token_expires_in as string,
   );
+
+  // create session
+  await createSession(user.id, accessToken, req);
 
   return {
     isNewUser: !user, // tells controller whether it was a register or login
@@ -299,6 +340,21 @@ const resetPassword = async (
   return "Password reset successfully!";
 };
 
+const logout = async (req: Request) => {
+  const token = req.headers.authorization;
+
+  if (!token) {
+    throw new AppError(httpStatus.UNAUTHORIZED, "No token provided");
+  }
+  console.log(token);
+  // delete this specific session
+  await prisma.session.deleteMany({
+    where: { token },
+  });
+
+  return "Logged out successfully";
+};
+
 export const AuthService = {
   loginUser,
   loginOrRegisterViaProvider,
@@ -307,4 +363,5 @@ export const AuthService = {
   changePassword,
   forgetPassword,
   resetPassword,
+  logout,
 };
