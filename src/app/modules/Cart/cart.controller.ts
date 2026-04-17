@@ -1,7 +1,7 @@
 import httpStatus from "http-status";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
-import { cartService } from "./cart.service";
+import { cartService } from "./cart.services";
 
 const getCart = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
@@ -27,10 +27,14 @@ const addToCart = catchAsync(async (req, res) => {
 });
 
 const updateCartItem = catchAsync(async (req, res) => {
-  const { email }   = req.user as { email: string };
-  const variantId   = Number(req.params.variantId);
-  const data        = JSON.parse(req.body.data);
-  const result = await cartService.updateCartItem(email, variantId, data.quantity);
+  const { email } = req.user as { email: string };
+  const variantId = Number(req.params.variantId);
+  const data = JSON.parse(req.body.data);
+  const result = await cartService.updateCartItem(
+    email,
+    variantId,
+    data.quantity,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
