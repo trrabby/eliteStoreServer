@@ -376,7 +376,55 @@ const getProductById = async (id: number) => {
   return product;
 };
 
+// const getProductById = async (id: number) => {
+//   const product = await prisma.product.findUnique({
+//     where: { id },
+//     include: {
+//       brand: { select: { id: true, name: true } },
+//       vendor: { select: { id: true, storeName: true } },
+//       categories: { include: { category: true } },
+//       images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] },
+//       variants: {
+//         include: {
+//           optionValues: {
+//             include: {
+//               value: {
+//                 include: {
+//                   option: true,
+//                 },
+//               },
+//             },
+//           },
+//         },
+//       },
+//       attributes: true,
+//       _count: {
+//         select: { reviews: true, orderItems: true },
+//       },
+//     },
+//   });
+
+//   if (!product) {
+//     throw new AppError(httpStatus.NOT_FOUND, "Product not found");
+//   }
+
+//   // Transform the variants to have clean optionValues
+//   const transformedProduct = {
+//     ...product,
+//     variants: product.variants.map((variant) => ({
+//       ...variant,
+//       optionValues: variant.optionValues.map((ov) => ({
+//         name: ov.value.option.name,
+//         value: ov.value.value,
+//       })),
+//     })),
+//   };
+
+//   return transformedProduct;
+// };
+
 // get my products — vendor
+
 const getMyProducts = async (
   email: string,
   query: { page?: number; limit?: number; status?: string },
@@ -891,15 +939,42 @@ const deleteVariant = async (variantId: number, email: string) => {
 const addAttribute = async (
   productId: number,
   email: string,
-  payload: { name: string; value: string },
+  payload: { name: string; value: string }[], // Array of attributes
 ) => {
   await verifyProductOwnership(productId, email);
 
-  const attribute = await prisma.productAttribute.create({
-    data: { productId, name: payload.name, value: payload.value },
+  // Validate no empty names or values
+  for (const attr of payload) {
+    if (!attr.name?.trim() || !attr.value?.trim()) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        "Attribute name and value are required",
+      );
+    }
+  }
+
+  // Create all attributes
+  const attributes = await prisma.productAttribute.createMany({
+    data: payload.map((attr) => ({
+      productId,
+      name: attr.name,
+      value: attr.value,
+    })),
+    skipDuplicates: true, // Optional: skip if same name+value+productId exists
   });
 
-  return attribute;
+  // Optional: Return the created attributes
+  const createdAttributes = await prisma.productAttribute.findMany({
+    where: {
+      productId,
+      name: { in: payload.map((attr) => attr.name) },
+    },
+  });
+
+  return {
+    count: attributes.count,
+    attributes: createdAttributes,
+  };
 };
 
 const deleteAttribute = async (attributeId: number, email: string) => {

@@ -2,6 +2,7 @@ import httpStatus from "http-status";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { productService } from "./product.service";
+import { createDiffieHellmanGroup } from "crypto";
 
 // ─────────────────────────────────────────
 // PRODUCT
@@ -210,6 +211,7 @@ const updateVariant = catchAsync(async (req, res) => {
   const variantId = Number(req.params.variantId);
   const { email } = req.user as { email: string };
   const data = JSON.parse(req.body.data);
+  console.log(variantId, email, data);
   const result = await productService.updateVariant(variantId, email, data);
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -252,6 +254,7 @@ const addAttribute = catchAsync(async (req, res) => {
   const productId = Number(req.params.id);
   const { email } = req.user as { email: string };
   const data = JSON.parse(req.body.data);
+  console.log(data);
   const result = await productService.addAttribute(productId, email, data);
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
