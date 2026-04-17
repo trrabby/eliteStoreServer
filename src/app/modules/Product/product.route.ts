@@ -72,7 +72,7 @@ router.patch(
 );
 
 router.delete(
-  "/:id/images/:imageId",
+  "/delete/:id/images/:imageId",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   ProductController.deleteProductImage,
 );
