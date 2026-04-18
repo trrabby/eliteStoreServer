@@ -28,4 +28,17 @@ export default {
     sslValidationApi: process.env.SSL_VALIDATIOIN_API,
     ipnUrl: process.env.SSL_IPN_URL,
   },
+  bkash: {
+    appKey: process.env.BKASH_APP_KEY,
+    appSecret: process.env.BKASH_APP_SECRET,
+    username: process.env.BKASH_USERNAME,
+    password: process.env.BKASH_PASSWORD,
+  },
+  nagad: {
+    merchantId: process.env.NAGAD_MERCHANT_ID,
+    merchantNumber: process.env.NAGAD_MERCHANT_NUMBER,
+    publicKey: process.env.NAGAD_PUBLIC_KEY,
+    privateKey: process.env.NAGAD_PRIVATE_KEY,
+    callbackUrl: process.env.NAGAD_CALLBACK_URL,
+  },
 };
