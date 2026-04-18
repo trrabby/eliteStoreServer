@@ -2,18 +2,13 @@ import { Router } from "express";
 import { OrderController } from "./order.controller";
 import { orderValidation } from "./order.validation";
 import auth from "../../middlewares/auth";
-import validateRequestFormdata from "../../middlewares/validateRequestFormdata";
+import validateRequestFormdata from "../../middlewares/validateRequestFormdataOptionalPhoto";
 import { multerUpload } from "../../../config/multer.config";
-import { Role } from "../../../generated/prisma";
+import { Role } from "@prisma/client";
 
 const router = Router();
 
-const allRoles = [
-  Role.CUSTOMER,
-  Role.VENDOR,
-  Role.ADMIN,
-  Role.SUPER_ADMIN,
-];
+const allRoles = [Role.CUSTOMER, Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN];
 
 // ─────────────────────────────────────────
 // CUSTOMER
@@ -21,32 +16,24 @@ const allRoles = [
 
 // place order from cart
 router.post(
-  "/",
+  "/createOrder",
   auth(...allRoles),
   multerUpload.none(),
   validateRequestFormdata(orderValidation.createOrder),
-  OrderController.createOrder
+  OrderController.createOrder,
 );
 
 // my orders list
-router.get(
-  "/my-orders",
-  auth(...allRoles),
-  OrderController.getMyOrders
-);
+router.get("/my-orders", auth(...allRoles), OrderController.getMyOrders);
 
 // my order by id
-router.get(
-  "/my-orders/:id",
-  auth(...allRoles),
-  OrderController.getMyOrderById
-);
+router.get("/my-orders/:id", auth(...allRoles), OrderController.getMyOrderById);
 
 // my order by order number — for tracking page
 router.get(
   "/my-orders/track/:orderNumber",
   auth(...allRoles),
-  OrderController.getMyOrderByNumber
+  OrderController.getMyOrderByNumber,
 );
 
 // cancel order — customer
@@ -55,7 +42,7 @@ router.patch(
   auth(...allRoles),
   multerUpload.none(),
   validateRequestFormdata(orderValidation.cancelOrder),
-  OrderController.cancelOrder
+  OrderController.cancelOrder,
 );
 
 // ─────────────────────────────────────────
@@ -66,21 +53,21 @@ router.patch(
 router.get(
   "/stats",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
-  OrderController.getOrderStats
+  OrderController.getOrderStats,
 );
 
 // all orders
 router.get(
   "/",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
-  OrderController.getAllOrders
+  OrderController.getAllOrders,
 );
 
 // single order
 router.get(
   "/:id",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
-  OrderController.getOrderByIdAdmin
+  OrderController.getOrderByIdAdmin,
 );
 
 // update status
@@ -89,7 +76,7 @@ router.patch(
   auth(Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(orderValidation.updateOrderStatus),
-  OrderController.updateOrderStatus
+  OrderController.updateOrderStatus,
 );
 
 export const orderRouter = router;

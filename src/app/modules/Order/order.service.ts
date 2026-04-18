@@ -10,26 +10,23 @@ import { validateCouponForUser } from "../Coupon/coupon.service";
 // generate human readable order number
 const generateOrderNumber = (): string => {
   const timestamp = Date.now().toString().slice(-8);
-  const random    = Math.floor(1000 + Math.random() * 9000);
+  const random = Math.floor(1000 + Math.random() * 9000);
   return `ORD-${timestamp}-${random}`;
 };
 
 // check if status transition is allowed
-const isValidStatusTransition = (
-  current: string,
-  next:    string
-): boolean => {
+const isValidStatusTransition = (current: string, next: string): boolean => {
   const transitions: Record<string, string[]> = {
-    PENDING:          ["CONFIRMED", "CANCELLED"],
-    CONFIRMED:        ["PROCESSING", "CANCELLED"],
-    PROCESSING:       ["SHIPPED", "CANCELLED"],
-    SHIPPED:          ["OUT_FOR_DELIVERY"],
+    PENDING: ["CONFIRMED", "CANCELLED"],
+    CONFIRMED: ["PROCESSING", "CANCELLED"],
+    PROCESSING: ["SHIPPED", "CANCELLED"],
+    SHIPPED: ["OUT_FOR_DELIVERY"],
     OUT_FOR_DELIVERY: ["DELIVERED"],
-    DELIVERED:        ["RETURN_REQUESTED"],
+    DELIVERED: ["RETURN_REQUESTED"],
     RETURN_REQUESTED: ["RETURNED", "DELIVERED"],
-    RETURNED:         ["REFUNDED"],
-    CANCELLED:        [],
-    REFUNDED:         [],
+    RETURNED: ["REFUNDED"],
+    CANCELLED: [],
+    REFUNDED: [],
   };
 
   return transitions[current]?.includes(next) ?? false;
@@ -45,13 +42,17 @@ const createOrder = async (
   payload: {
     shippingAddressId: number;
     billingAddressId?: number;
-    couponCode?:       string;
-    notes?:            string;
-  }
+    couponCode?: string;
+    notes?: string;
+  },
 ) => {
   const user = await prisma.user.findUnique({
-    where:   { email, isActive: true },
-    include: { cart: { include: { items: { include: { product: true, variant: true } } } } },
+    where: { email, isActive: true },
+    include: {
+      cart: {
+        include: { items: { include: { product: true, variant: true } } },
+      },
+    },
   });
 
   if (!user) {
@@ -69,22 +70,16 @@ const createOrder = async (
   });
 
   if (!shippingAddress) {
-    throw new AppError(
-      httpStatus.NOT_FOUND,
-      "Shipping address not found"
-    );
+    throw new AppError(httpStatus.NOT_FOUND, "Shipping address not found");
   }
-
+  let billingAddress = null;
   // validate billing address if provided
   if (payload.billingAddressId) {
-    const billingAddress = await prisma.address.findFirst({
+    billingAddress = await prisma.address.findFirst({
       where: { id: payload.billingAddressId, userId: user.id },
     });
     if (!billingAddress) {
-      throw new AppError(
-        httpStatus.NOT_FOUND,
-        "Billing address not found"
-      );
+      throw new AppError(httpStatus.NOT_FOUND, "Billing address not found");
     }
   }
 
@@ -100,7 +95,7 @@ const createOrder = async (
     }
     if (item.variant.stock < item.quantity) {
       issues.push(
-        `"${item.product.name}" only has ${item.variant.stock} in stock`
+        `"${item.product.name}" only has ${item.variant.stock} in stock`,
       );
     }
   }
@@ -108,33 +103,40 @@ const createOrder = async (
   if (issues.length > 0) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      `Cart has issues: ${issues.join(", ")}`
+      `Cart has issues: ${issues.join(", ")}`,
     );
   }
 
   // calculate subtotal
   const subtotal = user.cart.items.reduce(
     (sum, item) => sum + Number(item.variant.price) * item.quantity,
-    0
+    0,
   );
 
   // apply coupon if provided
-  let discount   = 0;
+  let discount = 0;
   let couponId: number | null = null;
 
   if (payload.couponCode) {
     const couponResult = await validateCouponForUser(
       payload.couponCode,
       user.id,
-      subtotal
+      subtotal,
     );
     discount = couponResult.discountAmount;
     couponId = couponResult.coupon.id;
   }
 
-  const shippingFee = subtotal >= 1000 ? 0 : 60;   // free shipping over 1000 BDT
-  const tax         = 0;                             // extend when needed
-  const total       = subtotal - discount + shippingFee + tax;
+  const shippingFee = billingAddress
+    ? billingAddress.city_district?.toLowerCase() === "dhaka"
+      ? 60
+      : 120
+    : shippingAddress?.city_district?.toLowerCase() === "dhaka"
+      ? 60
+      : 120; // free shipping over 2000 BDT
+  console.log(billingAddress?.city_district?.toLowerCase());
+  const tax = 0; // extend when needed
+  const total = subtotal - discount + shippingFee + tax;
 
   // create order in transaction
   const order = await prisma.$transaction(async (tx) => {
@@ -142,36 +144,36 @@ const createOrder = async (
 
     const created = await tx.order.create({
       data: {
-        userId:            user.id,
+        userId: user.id,
         orderNumber,
         shippingAddressId: payload.shippingAddressId,
-        billingAddressId:  payload.billingAddressId ?? null,
-        status:            "PENDING",
+        billingAddressId: payload.billingAddressId ?? null,
+        status: "PENDING",
         subtotal,
         shippingFee,
         discount,
         tax,
         total,
         couponId,
-        notes:             payload.notes ?? null,
+        notes: payload.notes ?? null,
       },
     });
 
     // create order items with snapshot
     await tx.orderItem.createMany({
       data: user.cart!.items.map((item) => ({
-        orderId:    created.id,
-        productId:  item.productId,
-        variantId:  item.variantId,
-        quantity:   item.quantity,
-        unitPrice:  item.variant.price,
+        orderId: created.id,
+        productId: item.productId,
+        variantId: item.variantId,
+        quantity: item.quantity,
+        unitPrice: item.variant.price,
         totalPrice: Number(item.variant.price) * item.quantity,
         snapshot: {
-          productName:  item.product.name,
-          productSlug:  item.product.slug,
-          variantName:  item.variant.name,
-          variantSku:   item.variant.sku,
-          price:        item.variant.price,
+          productName: item.product.name,
+          productSlug: item.product.slug,
+          variantName: item.variant.name,
+          variantSku: item.variant.sku,
+          price: item.variant.price,
           comparePrice: item.variant.comparePrice,
         },
       })),
@@ -181,15 +183,15 @@ const createOrder = async (
     for (const item of user.cart!.items) {
       await tx.productVariant.update({
         where: { id: item.variantId },
-        data:  { stock: { decrement: item.quantity } },
+        data: { stock: { decrement: item.quantity } },
       });
 
       // log inventory change
       await tx.inventoryLog.create({
         data: {
-          variantId:   item.variantId,
-          change:      -item.quantity,
-          reason:      "SALE",
+          variantId: item.variantId,
+          change: -item.quantity,
+          reason: "SALE",
           referenceId: created.id,
         },
       });
@@ -197,7 +199,7 @@ const createOrder = async (
       // increment product totalSold
       await tx.product.update({
         where: { id: item.productId },
-        data:  { totalSold: { increment: item.quantity } },
+        data: { totalSold: { increment: item.quantity } },
       });
     }
 
@@ -206,14 +208,14 @@ const createOrder = async (
       await tx.couponUsage.create({
         data: {
           couponId,
-          userId:  user.id,
+          userId: user.id,
           orderId: created.id,
         },
       });
 
       await tx.coupon.update({
         where: { id: couponId },
-        data:  { usedCount: { increment: 1 } },
+        data: { usedCount: { increment: 1 } },
       });
     }
 
@@ -221,8 +223,8 @@ const createOrder = async (
     await tx.orderStatusHistory.create({
       data: {
         orderId: created.id,
-        status:  "PENDING",
-        note:    "Order placed successfully",
+        status: "PENDING",
+        note: "Order placed successfully",
       },
     });
 
@@ -240,17 +242,17 @@ const createOrder = async (
 
 // get all orders — admin
 const getAllOrders = async (query: {
-  page?:     number;
-  limit?:    number;
-  status?:   string;
-  userId?:   number;
-  search?:   string;
+  page?: number;
+  limit?: number;
+  status?: string;
+  userId?: number;
+  search?: string;
   dateFrom?: string;
-  dateTo?:   string;
+  dateTo?: string;
 }) => {
-  const page  = query.page  ?? 1;
+  const page = query.page ?? 1;
   const limit = query.limit ?? 20;
-  const skip  = (page - 1) * limit;
+  const skip = (page - 1) * limit;
 
   const where: any = {};
 
@@ -267,7 +269,7 @@ const getAllOrders = async (query: {
   if (query.dateFrom || query.dateTo) {
     where.createdAt = {
       ...(query.dateFrom && { gte: new Date(query.dateFrom) }),
-      ...(query.dateTo   && { lte: new Date(query.dateTo)   }),
+      ...(query.dateTo && { lte: new Date(query.dateTo) }),
     };
   }
 
@@ -275,21 +277,21 @@ const getAllOrders = async (query: {
     prisma.order.findMany({
       where,
       skip,
-      take:    limit,
+      take: limit,
       orderBy: { createdAt: "desc" },
       select: {
-        id:          true,
-        publicId:    true,
+        id: true,
+        publicId: true,
         orderNumber: true,
-        status:      true,
-        subtotal:    true,
-        discount:    true,
+        status: true,
+        subtotal: true,
+        discount: true,
         shippingFee: true,
-        total:       true,
-        createdAt:   true,
+        total: true,
+        createdAt: true,
         user: {
           select: {
-            email:       true,
+            email: true,
             accountInfo: {
               select: { firstName: true, lastName: true },
             },
@@ -312,7 +314,7 @@ const getAllOrders = async (query: {
 // get my orders — customer
 const getMyOrders = async (
   email: string,
-  query: { page?: number; limit?: number; status?: string }
+  query: { page?: number; limit?: number; status?: string },
 ) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
@@ -322,9 +324,9 @@ const getMyOrders = async (
     throw new AppError(httpStatus.NOT_FOUND, "User not found");
   }
 
-  const page  = query.page  ?? 1;
+  const page = query.page ?? 1;
   const limit = query.limit ?? 10;
-  const skip  = (page - 1) * limit;
+  const skip = (page - 1) * limit;
 
   const where: any = { userId: user.id };
   if (query.status) where.status = query.status;
@@ -333,25 +335,25 @@ const getMyOrders = async (
     prisma.order.findMany({
       where,
       skip,
-      take:    limit,
+      take: limit,
       orderBy: { createdAt: "desc" },
       select: {
-        id:          true,
-        publicId:    true,
+        id: true,
+        publicId: true,
         orderNumber: true,
-        status:      true,
-        subtotal:    true,
-        discount:    true,
+        status: true,
+        subtotal: true,
+        discount: true,
         shippingFee: true,
-        total:       true,
-        createdAt:   true,
+        total: true,
+        createdAt: true,
         deliveredAt: true,
         items: {
-          take: 3,  // preview first 3 items
+          take: 3, // preview first 3 items
           select: {
-            quantity:  true,
+            quantity: true,
             unitPrice: true,
-            snapshot:  true,
+            snapshot: true,
           },
         },
         payment: {
@@ -371,9 +373,9 @@ const getMyOrders = async (
 
 // get order by id — internal helper
 const getOrderById = async (
-  orderId:    number,
-  userId:     number,
-  isCustomer: boolean
+  orderId: number,
+  userId: number,
+  isCustomer: boolean,
 ) => {
   const where: any = { id: orderId };
 
@@ -387,22 +389,22 @@ const getOrderById = async (
         include: {
           product: {
             select: {
-              id:      true,
+              id: true,
               publicId: true,
-              name:    true,
-              slug:    true,
+              name: true,
+              slug: true,
               images: {
-                where:  { isPrimary: true },
-                take:   1,
+                where: { isPrimary: true },
+                take: 1,
                 select: { url: true },
               },
             },
           },
           variant: {
             select: {
-              id:    true,
-              sku:   true,
-              name:  true,
+              id: true,
+              sku: true,
+              name: true,
               price: true,
             },
           },
@@ -412,17 +414,17 @@ const getOrderById = async (
         },
       },
       shippingAddress: true,
-      billingAddress:  true,
+      billingAddress: true,
       coupon: {
         select: { code: true, discountType: true, discountValue: true },
       },
-      payment:       true,
-      shipment:      true,
+      payment: true,
+      shipment: true,
       statusHistory: { orderBy: { createdAt: "desc" } },
       user: {
         select: {
-          email:       true,
-          phone:       true,
+          email: true,
+          phone: true,
           accountInfo: {
             select: { firstName: true, lastName: true },
           },
@@ -479,9 +481,9 @@ const getMyOrderByNumber = async (email: string, orderNumber: string) => {
 
 // cancel order — customer
 const cancelOrder = async (
-  email:        string,
-  orderId:      number,
-  cancelReason: string
+  email: string,
+  orderId: number,
+  cancelReason: string,
 ) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
@@ -492,7 +494,7 @@ const cancelOrder = async (
   }
 
   const order = await prisma.order.findFirst({
-    where:   { id: orderId, userId: user.id },
+    where: { id: orderId, userId: user.id },
     include: { items: true },
   });
 
@@ -504,7 +506,7 @@ const cancelOrder = async (
   if (!["PENDING", "CONFIRMED"].includes(order.status)) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      `Order cannot be cancelled at "${order.status}" stage`
+      `Order cannot be cancelled at "${order.status}" stage`,
     );
   }
 
@@ -512,21 +514,21 @@ const cancelOrder = async (
     // update order status
     await tx.order.update({
       where: { id: orderId },
-      data:  { status: "CANCELLED", cancelReason },
+      data: { status: "CANCELLED", cancelReason },
     });
 
     // restore stock
     for (const item of order.items) {
       await tx.productVariant.update({
         where: { id: item.variantId },
-        data:  { stock: { increment: item.quantity } },
+        data: { stock: { increment: item.quantity } },
       });
 
       await tx.inventoryLog.create({
         data: {
-          variantId:   item.variantId,
-          change:      item.quantity,
-          reason:      "CANCELLATION",
+          variantId: item.variantId,
+          change: item.quantity,
+          reason: "CANCELLATION",
           referenceId: orderId,
         },
       });
@@ -534,7 +536,7 @@ const cancelOrder = async (
       // decrement totalSold
       await tx.product.update({
         where: { id: item.productId },
-        data:  { totalSold: { decrement: item.quantity } },
+        data: { totalSold: { decrement: item.quantity } },
       });
     }
 
@@ -542,7 +544,7 @@ const cancelOrder = async (
     if (order.couponId) {
       await tx.coupon.update({
         where: { id: order.couponId },
-        data:  { usedCount: { decrement: 1 } },
+        data: { usedCount: { decrement: 1 } },
       });
 
       await tx.couponUsage.deleteMany({
@@ -555,7 +557,7 @@ const cancelOrder = async (
       data: {
         orderId,
         status: "CANCELLED",
-        note:   cancelReason,
+        note: cancelReason,
       },
     });
   });
@@ -566,7 +568,7 @@ const cancelOrder = async (
 // update order status — admin
 const updateOrderStatus = async (
   orderId: number,
-  payload: { status: string; note?: string }
+  payload: { status: string; note?: string },
 ) => {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -579,7 +581,7 @@ const updateOrderStatus = async (
   if (!isValidStatusTransition(order.status, payload.status)) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      `Cannot transition from "${order.status}" to "${payload.status}"`
+      `Cannot transition from "${order.status}" to "${payload.status}"`,
     );
   }
 
@@ -598,7 +600,7 @@ const updateOrderStatus = async (
       data: {
         orderId,
         status: payload.status as any,
-        note:   payload.note ?? null,
+        note: payload.note ?? null,
       },
     });
 
@@ -610,24 +612,18 @@ const updateOrderStatus = async (
 
 // get order stats — admin dashboard
 const getOrderStats = async () => {
-  const [
-    total,
-    pending,
-    processing,
-    delivered,
-    cancelled,
-    revenue,
-  ] = await Promise.all([
-    prisma.order.count(),
-    prisma.order.count({ where: { status: "PENDING" } }),
-    prisma.order.count({ where: { status: "PROCESSING" } }),
-    prisma.order.count({ where: { status: "DELIVERED" } }),
-    prisma.order.count({ where: { status: "CANCELLED" } }),
-    prisma.order.aggregate({
-      where: { status: "DELIVERED" },
-      _sum:  { total: true },
-    }),
-  ]);
+  const [total, pending, processing, delivered, cancelled, revenue] =
+    await Promise.all([
+      prisma.order.count(),
+      prisma.order.count({ where: { status: "PENDING" } }),
+      prisma.order.count({ where: { status: "PROCESSING" } }),
+      prisma.order.count({ where: { status: "DELIVERED" } }),
+      prisma.order.count({ where: { status: "CANCELLED" } }),
+      prisma.order.aggregate({
+        where: { status: "DELIVERED" },
+        _sum: { total: true },
+      }),
+    ]);
 
   return {
     total,
