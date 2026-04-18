@@ -2,9 +2,9 @@ import { Router } from "express";
 import { CouponController } from "./coupon.controller";
 import { couponValidation } from "./coupon.validation";
 import auth from "../../middlewares/auth";
-import validateRequestFormdata from "../../middlewares/validateRequestFormdata";
+import validateRequestFormdata from "../../middlewares/validateRequestFormdataOptionalPhoto";
 import { multerUpload } from "../../../config/multer.config";
-import { Role } from "../../../generated/prisma";
+import { Role } from "@prisma/client";
 
 const router = Router();
 
@@ -18,14 +18,14 @@ router.post(
   auth(Role.CUSTOMER, Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(couponValidation.applyCoupon),
-  CouponController.applyCoupon
+  CouponController.applyCoupon,
 );
 
 // my coupon usage history
 router.get(
   "/my-history",
   auth(Role.CUSTOMER, Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
-  CouponController.getMyCouponHistory
+  CouponController.getMyCouponHistory,
 );
 
 // ─────────────────────────────────────────
@@ -35,21 +35,21 @@ router.get(
 router.get(
   "/",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
-  CouponController.getAllCoupons
+  CouponController.getAllCoupons,
 );
 
 router.get(
   "/:id",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
-  CouponController.getCouponById
+  CouponController.getCouponById,
 );
 
 router.post(
-  "/",
+  "/create",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(couponValidation.createCoupon),
-  CouponController.createCoupon
+  CouponController.createCoupon,
 );
 
 router.patch(
@@ -57,19 +57,19 @@ router.patch(
   auth(Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(couponValidation.updateCoupon),
-  CouponController.updateCoupon
+  CouponController.updateCoupon,
 );
 
 router.patch(
   "/:id/toggle-status",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
-  CouponController.toggleCouponStatus
+  CouponController.toggleCouponStatus,
 );
 
 router.delete(
   "/:id",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
-  CouponController.deleteCoupon
+  CouponController.deleteCoupon,
 );
 
 export const couponRouter = router;
