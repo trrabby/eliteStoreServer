@@ -158,12 +158,13 @@ const initiatePayment = async (
     payload.method === "DEBIT_CARD" ||
     payload.method === "NET_BANKING"
   ) {
-    const { gatewayUrl, sessionKey } = await initiateSSLPayment(gatewayPayload);
+    const { gatewayUrl, sessionKey, transactionId } =
+      await initiateSSLPayment(gatewayPayload);
 
     // store session key as gatewayRef
     await prisma.payment.update({
       where: { orderId: order.id },
-      data: { gatewayRef: sessionKey },
+      data: { gatewayRef: sessionKey, transactionId },
     });
 
     return {
@@ -214,12 +215,12 @@ const isBkash = (number?: string): boolean => {
 // ── SSLCommerz callback handlers ──
 
 const handleSSLSuccess = async (query: any) => {
-  const { val_id, tran_id, store_amount } = query;
+  const { val_id, tran_id } = query;
 
   // find payment by gateway ref (session key or tran_id)
   const payment = await prisma.payment.findFirst({
     where: {
-      OR: [{ gatewayRef: val_id }, { transactionId: tran_id }],
+      OR: [{ transactionId: tran_id }],
     },
     include: { order: true },
   });
@@ -271,8 +272,9 @@ const handleSSLSuccess = async (query: any) => {
 };
 
 const handleSSLFail = async (query: any) => {
+  const { tran_id } = query;
   const payment = await prisma.payment.findFirst({
-    where: { gatewayRef: query.sessionkey },
+    where: { transactionId: tran_id },
   });
 
   if (payment) {
@@ -289,7 +291,6 @@ const handleSSLFail = async (query: any) => {
 };
 
 const handleSSLCancel = async (query: any) => {
-  console.log(query);
   const payment = await prisma.payment.findFirst({
     where: { gatewayRef: query.sessionkey },
   });

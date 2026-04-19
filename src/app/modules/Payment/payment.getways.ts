@@ -23,15 +23,19 @@ export type GatewayPaymentPayload = {
 
 export const initiateSSLPayment = async (
   payload: GatewayPaymentPayload,
-): Promise<{ gatewayUrl: string; sessionKey: string }> => {
+): Promise<{
+  gatewayUrl: string;
+  sessionKey: string;
+  transactionId: string;
+}> => {
   const cfg = gatewayConfig.sslcommerz;
-
+  const tranId = `${payload.orderNumber}-${Date.now()}`;
   const data = {
     store_id: cfg.storeId,
     store_passwd: cfg.storePass,
     total_amount: payload.amount,
     currency: payload.currency,
-    tran_id: `${payload.orderNumber}-${Date.now()}`,
+    tran_id: tranId,
     success_url: cfg.successUrl,
     fail_url: cfg.failUrl,
     cancel_url: cfg.cancelUrl,
@@ -61,6 +65,7 @@ export const initiateSSLPayment = async (
   return {
     gatewayUrl: response.data.GatewayPageURL,
     sessionKey: response.data.sessionkey,
+    transactionId: tranId,
   };
 };
 
