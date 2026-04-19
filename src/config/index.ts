@@ -41,4 +41,9 @@ export default {
     privateKey: process.env.NAGAD_PRIVATE_KEY,
     callbackUrl: process.env.NAGAD_CALLBACK_URL,
   },
+  steadfast: {
+    baseUrl: process.env.STEADFAST_BASE_URL,
+    apiKey: process.env.STEADFAST_API_KEY,
+    secretKey: process.env.STEADFAST_SECRET_KEY,
+  },
 };
