@@ -134,7 +134,7 @@ const createOrder = async (
     : shippingAddress?.city_district?.toLowerCase() === "dhaka"
       ? 60
       : 120; // free shipping over 2000 BDT
-  console.log(billingAddress?.city_district?.toLowerCase());
+  // console.log(billingAddress?.city_district?.toLowerCase());
   const tax = 0; // extend when needed
   const total = subtotal - discount + shippingFee + tax;
 
@@ -568,7 +568,7 @@ const cancelOrder = async (
 // update order status — admin
 const updateOrderStatus = async (
   orderId: number,
-  payload: { status: string; note?: string },
+  payload: { status: string; note?: string; isPaymentReceived?: boolean },
 ) => {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -583,6 +583,26 @@ const updateOrderStatus = async (
       httpStatus.BAD_REQUEST,
       `Cannot transition from "${order.status}" to "${payload.status}"`,
     );
+  }
+
+  // if marking as delivered, check whether payment is completed
+  if (payload.status === "DELIVERED") {
+    const payment = await prisma.payment.findUnique({
+      where: { orderId },
+    });
+    // console.log(payment);
+    if (payment?.status !== "SUCCESS" && payload.isPaymentReceived !== true) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        "Order cannot be marked as delivered without successful payment. Add isPaymentReceived flag to override if payment is received by other means.",
+      );
+    }
+    if (payload.isPaymentReceived === true) {
+      await prisma.payment.update({
+        where: { orderId },
+        data: { status: "SUCCESS" },
+      });
+    }
   }
 
   const updated = await prisma.$transaction(async (tx) => {

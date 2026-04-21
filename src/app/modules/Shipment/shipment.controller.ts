@@ -18,6 +18,7 @@ const createShipment = catchAsync(async (req, res) => {
 
 const createSteadfastShipments = catchAsync(async (req, res) => {
   const data = JSON.parse(req.body.data);
+
   const result = await shipmentService.createSteadfastShipments(data.orderIds);
   sendResponse(res, {
     statusCode: httpStatus.CREATED,

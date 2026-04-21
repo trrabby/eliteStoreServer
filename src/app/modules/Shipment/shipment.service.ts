@@ -145,7 +145,7 @@ const createSteadfastShipments = async (orderIds: number[]) => {
     );
   }
 
-  // build steadfast payloads
+  // build steadfast payloads (now complete)
   const steadfastPayloads: SteadfastOrderPayload[] = eligibleOrders.map(
     (order) => ({
       invoice: order.orderNumber,
@@ -159,7 +159,10 @@ const createSteadfastShipments = async (orderIds: number[]) => {
       ]
         .filter(Boolean)
         .join(", "),
-      // COD amount — 0 for prepaid orders
+      recipient_city: order.shippingAddress.city_district ?? "Dhaka",
+      recipient_area: order.shippingAddress.city_district ?? "Unknown",
+      delivery_type: "regular",
+      item_description: "Order Items",
       cod_amount:
         order.payment?.method === "CASH_ON_DELIVERY" ? Number(order.total) : 0,
       note: order.notes ?? undefined,
@@ -181,7 +184,6 @@ const createSteadfastShipments = async (orderIds: number[]) => {
   // save successful shipments to DB
   for (const item of success) {
     const order = eligibleOrders.find((o) => o.orderNumber === item.invoice);
-
     if (!order) continue;
 
     await prisma.$transaction(async (tx) => {
@@ -189,8 +191,8 @@ const createSteadfastShipments = async (orderIds: number[]) => {
         data: {
           orderId: order.id,
           carrier: "Steadfast",
-          trackingNumber: item.consignment_id,
-          trackingUrl: `https://steadfast.com.bd/t/${item.consignment_id}`,
+          trackingNumber: String(item.consignment_id), // ensure string
+          trackingUrl: (item as any)?.tracking_link, // ✅ use real link
           shippedAt: new Date(),
         },
       });
@@ -204,7 +206,7 @@ const createSteadfastShipments = async (orderIds: number[]) => {
         data: {
           orderId: order.id,
           status: "SHIPPED",
-          note: `Shipped via Steadfast. Consignment: ${item.consignment_id}`,
+          note: `Consigned to Steadfast. Consignment: ${item.consignment_id}, Tracking: ${item.tracking_code}`,
         },
       });
 
@@ -213,6 +215,7 @@ const createSteadfastShipments = async (orderIds: number[]) => {
         orderNumber: order.orderNumber,
         consignmentId: item.consignment_id,
         trackingCode: item.tracking_code,
+        trackingLink: (item as any).tracking_link,
         shipmentId: shipment.id,
       });
     });

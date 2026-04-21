@@ -96,16 +96,18 @@ export const createSteadfastBulkOrders = async (
 }> => {
   const response = await axios.post(
     `${steadfastConfig.baseUrl}/create_order/bulk-order`,
-    { data: orders },
+    orders,
     { headers: headers() },
   );
 
   const success: SteadfastOrderResponse[] = [];
   const failed: { invoice: string; message: string }[] = [];
 
-  if (Array.isArray(response.data?.consignment)) {
-    for (const item of response.data.consignment) {
-      if (item.status === 200) {
+  const consignments = response.data?.data || [];
+
+  if (Array.isArray(consignments)) {
+    for (const item of consignments) {
+      if (item.status === "success") {
         success.push(item);
       } else {
         failed.push({
