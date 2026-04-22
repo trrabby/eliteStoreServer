@@ -101,6 +101,13 @@ enum NotificationType {
   RESTOCK
 }
 
+enum ReturnRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
 // ─────────────────────────────────────────
 // AUTH & IDENTITY
 // ─────────────────────────────────────────
@@ -698,17 +705,18 @@ model Shipment {
 // ─────────────────────────────────────────
 
 model ReturnRequest {
-  id           Int          @id @default(autoincrement())
-  publicId     String       @unique @default(cuid()) // exposed in API/URLs
+  id           Int                 @id @default(autoincrement())
+  publicId     String              @unique @default(cuid())
   orderId      Int
   userId       Int
   reason       ReturnReason
   description  String?
-  status       String       @default("PENDING")
-  refundAmount Decimal?     @db.Decimal(12, 2)
+  status       ReturnRequestStatus @default(PENDING)
+  refundAmount Decimal?            @db.Decimal(12, 2)
   images       String[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  returnItems  Json                @default("[]")
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)

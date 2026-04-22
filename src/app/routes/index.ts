@@ -11,6 +11,7 @@ import { couponRouter } from "../modules/Coupon/coupon.route";
 import { orderRouter } from "../modules/Order/order.route";
 import { paymentRouter } from "../modules/Payment/payment.route";
 import { shipmentRouter } from "../modules/Shipment/shipment.route";
+import { returnRequestRouter } from "../modules/ReturnRequest/returnRequest.route";
 
 const router = express.Router();
 
@@ -62,6 +63,10 @@ const moduleRoutes = [
   {
     path: "/shipments",
     route: shipmentRouter,
+  },
+  {
+    path: "/return-requests",
+    route: returnRequestRouter,
   },
 ];
 
