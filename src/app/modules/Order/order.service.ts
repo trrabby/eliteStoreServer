@@ -572,6 +572,10 @@ const updateOrderStatus = async (
 ) => {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
+    include: {
+      shipment: true,
+      payment: true,
+    },
   });
 
   if (!order) {
@@ -585,27 +589,86 @@ const updateOrderStatus = async (
     );
   }
 
-  // if marking as delivered, check whether payment is completed
-  if (payload.status === "DELIVERED") {
-    const payment = await prisma.payment.findUnique({
-      where: { orderId },
-    });
-    // console.log(payment);
-    if (payment?.status !== "SUCCESS" && payload.isPaymentReceived !== true) {
-      throw new AppError(
-        httpStatus.BAD_REQUEST,
-        "Order cannot be marked as delivered without successful payment. Add isPaymentReceived flag to override if payment is received by other means.",
-      );
-    }
-    if (payload.isPaymentReceived === true) {
-      await prisma.payment.update({
-        where: { orderId },
-        data: { status: "SUCCESS" },
-      });
-    }
-  }
-
   const updated = await prisma.$transaction(async (tx) => {
+    /** ---------------- DELIVERY LOGIC ---------------- **/
+    if (payload.status === "DELIVERED") {
+      const payment = await tx.payment.findUnique({
+        where: { orderId },
+      });
+
+      if (payment?.status !== "SUCCESS" && payload.isPaymentReceived !== true) {
+        throw new AppError(
+          httpStatus.BAD_REQUEST,
+          "Order cannot be marked as delivered without successful payment. Use isPaymentReceived to override.",
+        );
+      }
+
+      // mark payment success (COD or manual)
+      if (payment && payment.status !== "SUCCESS") {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: "SUCCESS",
+            paidAt: new Date(),
+          },
+        });
+      }
+
+      // update shipment delivered time
+      if (order.shipment) {
+        await tx.shipment.update({
+          where: { id: order.shipment.id },
+          data: { deliveredAt: new Date() },
+        });
+      }
+    }
+
+    /** ---------------- CANCELLATION LOGIC ---------------- **/
+    if (payload.status === "CANCELLED") {
+      const orderItems = await tx.orderItem.findMany({
+        where: { orderId },
+      });
+
+      for (const item of orderItems) {
+        // restore stock
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: {
+            stock: { increment: item.quantity },
+          },
+        });
+
+        // inventory log
+        await tx.inventoryLog.create({
+          data: {
+            variantId: item.variantId,
+            change: item.quantity,
+            reason: "ORDER_CANCELLATION",
+            referenceId: orderId,
+          },
+        });
+
+        // rollback total sold
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            totalSold: { decrement: item.quantity },
+          },
+        });
+      }
+
+      // rollback coupon usage
+      if (order.couponId) {
+        await tx.coupon.update({
+          where: { id: order.couponId },
+          data: {
+            usedCount: { decrement: 1 },
+          },
+        });
+      }
+    }
+
+    /** ---------------- MAIN ORDER UPDATE ---------------- **/
     const updatedOrder = await tx.order.update({
       where: { id: orderId },
       data: {
@@ -616,6 +679,7 @@ const updateOrderStatus = async (
       },
     });
 
+    /** ---------------- HISTORY ---------------- **/
     await tx.orderStatusHistory.create({
       data: {
         orderId,
@@ -628,6 +692,155 @@ const updateOrderStatus = async (
   });
 
   return updated;
+};
+
+// update order status in bulk — admin
+const updateOrderStatusBulk = async (payload: {
+  orderIds: number[];
+  status: string;
+  note?: string;
+  isPaymentReceived?: boolean;
+}) => {
+  const { orderIds, status, note, isPaymentReceived } = payload;
+
+  const orders = await prisma.order.findMany({
+    where: { id: { in: orderIds } },
+    include: {
+      shipment: true,
+      payment: true,
+    },
+  });
+
+  const results = {
+    success: [] as any[],
+    failed: [] as any[],
+    skipped: [] as any[],
+  };
+
+  for (const order of orders) {
+    try {
+      // status transition check
+      if (!isValidStatusTransition(order.status, status)) {
+        results.skipped.push({
+          orderId: order.id,
+          reason: `Invalid transition ${order.status} → ${status}`,
+        });
+        continue;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        /** -------- DELIVERY -------- **/
+        if (status === "DELIVERED") {
+          const payment = await tx.payment.findUnique({
+            where: { orderId: order.id },
+          });
+
+          if (payment?.status !== "SUCCESS" && isPaymentReceived !== true) {
+            throw new Error("Payment not completed");
+          }
+
+          if (payment && payment.status !== "SUCCESS") {
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: {
+                status: "SUCCESS",
+                paidAt: new Date(),
+              },
+            });
+          }
+
+          if (order.shipment) {
+            await tx.shipment.update({
+              where: { id: order.shipment.id },
+              data: { deliveredAt: new Date() },
+            });
+          }
+        }
+
+        /** -------- CANCELLATION -------- **/
+        if (status === "CANCELLED") {
+          const items = await tx.orderItem.findMany({
+            where: { orderId: order.id },
+          });
+
+          for (const item of items) {
+            await tx.productVariant.update({
+              where: { id: item.variantId },
+              data: {
+                stock: { increment: item.quantity },
+              },
+            });
+
+            await tx.inventoryLog.create({
+              data: {
+                variantId: item.variantId,
+                change: item.quantity,
+                reason: "ORDER_CANCELLATION",
+                referenceId: order.id,
+              },
+            });
+
+            await tx.product.update({
+              where: { id: item.productId },
+              data: {
+                totalSold: { decrement: item.quantity },
+              },
+            });
+          }
+
+          if (order.couponId) {
+            await tx.coupon.update({
+              where: { id: order.couponId },
+              data: {
+                usedCount: { decrement: 1 },
+              },
+            });
+          }
+        }
+
+        /** -------- MAIN UPDATE -------- **/
+        const updatedOrder = await tx.order.update({
+          where: { id: order.id },
+          data: {
+            status: status as any,
+            ...(status === "DELIVERED" && {
+              deliveredAt: new Date(),
+            }),
+          },
+        });
+
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            status: status as any,
+            note: note ?? null,
+          },
+        });
+
+        results.success.push({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          newStatus: status,
+        });
+
+        return updatedOrder;
+      });
+    } catch (err: any) {
+      results.failed.push({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        error: err.message,
+      });
+    }
+  }
+
+  return {
+    total: orderIds.length,
+    successCount: results.success.length,
+    failedCount: results.failed.length,
+    skippedCount: results.skipped.length,
+    ...results,
+  };
 };
 
 // get order stats — admin dashboard
@@ -664,5 +877,6 @@ export const orderService = {
   getOrderByIdAdmin,
   cancelOrder,
   updateOrderStatus,
+  updateOrderStatusBulk,
   getOrderStats,
 };

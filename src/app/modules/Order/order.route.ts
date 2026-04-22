@@ -72,11 +72,20 @@ router.get(
 
 // update status
 router.patch(
-  "/:id/status",
+  "single/:id/status",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(orderValidation.updateOrderStatus),
   OrderController.updateOrderStatus,
+);
+
+// update status in bulk
+router.patch(
+  "/bulk/status",
+  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  multerUpload.none(),
+  validateRequestFormdata(orderValidation.updateOrderStatusBulk),
+  OrderController.updateOrderStatusBulk,
 );
 
 export const orderRouter = router;

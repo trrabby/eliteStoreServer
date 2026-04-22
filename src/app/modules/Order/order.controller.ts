@@ -5,8 +5,8 @@ import { orderService } from "./order.service";
 
 const createOrder = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
-  const data      = JSON.parse(req.body.data);
-  const result    = await orderService.createOrder(email, data);
+  const data = JSON.parse(req.body.data);
+  const result = await orderService.createOrder(email, data);
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
     success: true,
@@ -16,19 +16,16 @@ const createOrder = catchAsync(async (req, res) => {
 });
 
 const getAllOrders = catchAsync(async (req, res) => {
-  const {
-    page, limit, status, userId,
-    search, dateFrom, dateTo,
-  } = req.query;
+  const { page, limit, status, userId, search, dateFrom, dateTo } = req.query;
 
   const result = await orderService.getAllOrders({
-    page:     page     ? Number(page)     : undefined,
-    limit:    limit    ? Number(limit)    : undefined,
-    userId:   userId   ? Number(userId)   : undefined,
-    status:   status   ? String(status)   : undefined,
-    search:   search   ? String(search)   : undefined,
+    page: page ? Number(page) : undefined,
+    limit: limit ? Number(limit) : undefined,
+    userId: userId ? Number(userId) : undefined,
+    status: status ? String(status) : undefined,
+    search: search ? String(search) : undefined,
     dateFrom: dateFrom ? String(dateFrom) : undefined,
-    dateTo:   dateTo   ? String(dateTo)   : undefined,
+    dateTo: dateTo ? String(dateTo) : undefined,
   });
 
   sendResponse(res, {
@@ -40,12 +37,12 @@ const getAllOrders = catchAsync(async (req, res) => {
 });
 
 const getMyOrders = catchAsync(async (req, res) => {
-  const { email }        = req.user as { email: string };
+  const { email } = req.user as { email: string };
   const { page, limit, status } = req.query;
 
   const result = await orderService.getMyOrders(email, {
-    page:   page   ? Number(page)   : undefined,
-    limit:  limit  ? Number(limit)  : undefined,
+    page: page ? Number(page) : undefined,
+    limit: limit ? Number(limit) : undefined,
     status: status ? String(status) : undefined,
   });
 
@@ -59,8 +56,8 @@ const getMyOrders = catchAsync(async (req, res) => {
 
 const getMyOrderById = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
-  const orderId   = Number(req.params.id);
-  const result    = await orderService.getMyOrderById(email, orderId);
+  const orderId = Number(req.params.id);
+  const result = await orderService.getMyOrderById(email, orderId);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -70,9 +67,9 @@ const getMyOrderById = catchAsync(async (req, res) => {
 });
 
 const getMyOrderByNumber = catchAsync(async (req, res) => {
-  const { email }       = req.user as { email: string };
+  const { email } = req.user as { email: string };
   const { orderNumber } = req.params;
-  const result          = await orderService.getMyOrderByNumber(email, orderNumber);
+  const result = await orderService.getMyOrderByNumber(email, orderNumber);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -83,7 +80,7 @@ const getMyOrderByNumber = catchAsync(async (req, res) => {
 
 const getOrderByIdAdmin = catchAsync(async (req, res) => {
   const orderId = Number(req.params.id);
-  const result  = await orderService.getOrderByIdAdmin(orderId);
+  const result = await orderService.getOrderByIdAdmin(orderId);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -94,8 +91,8 @@ const getOrderByIdAdmin = catchAsync(async (req, res) => {
 
 const cancelOrder = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
-  const orderId   = Number(req.params.id);
-  const data      = JSON.parse(req.body.data);
+  const orderId = Number(req.params.id);
+  const data = JSON.parse(req.body.data);
   await orderService.cancelOrder(email, orderId, data.cancelReason);
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -107,12 +104,25 @@ const cancelOrder = catchAsync(async (req, res) => {
 
 const updateOrderStatus = catchAsync(async (req, res) => {
   const orderId = Number(req.params.id);
-  const data    = JSON.parse(req.body.data);
-  const result  = await orderService.updateOrderStatus(orderId, data);
+  const data = JSON.parse(req.body.data);
+  const result = await orderService.updateOrderStatus(orderId, data);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: "Order status updated successfully",
+    data: result,
+  });
+});
+
+const updateOrderStatusBulk = catchAsync(async (req, res) => {
+  const data = JSON.parse(req.body.data);
+
+  const result = await orderService.updateOrderStatusBulk(data);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Bulk order status update completed",
     data: result,
   });
 });
@@ -136,5 +146,6 @@ export const OrderController = {
   getOrderByIdAdmin,
   cancelOrder,
   updateOrderStatus,
+  updateOrderStatusBulk,
   getOrderStats,
 };
