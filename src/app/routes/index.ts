@@ -12,6 +12,8 @@ import { orderRouter } from "../modules/Order/order.route";
 import { paymentRouter } from "../modules/Payment/payment.route";
 import { shipmentRouter } from "../modules/Shipment/shipment.route";
 import { returnRequestRouter } from "../modules/ReturnRequest/returnRequest.route";
+import { reviewRouter } from "../modules/Review/review.route";
+import { inventoryLogRouter } from "../modules/InventoryLog/inventoryLog.route";
 
 const router = express.Router();
 
@@ -67,6 +69,14 @@ const moduleRoutes = [
   {
     path: "/return-requests",
     route: returnRequestRouter,
+  },
+  {
+    path: "/reviews",
+    route: reviewRouter,
+  },
+  {
+    path: "/inventory-logs",
+    route: inventoryLogRouter,
   },
 ];
 

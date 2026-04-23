@@ -403,7 +403,6 @@ const processReturn = async (
         data: { status: "REJECTED" },
       });
 
-      // revert order back to DELIVERED
       await tx.order.update({
         where: { id: returnRequest.orderId },
         data: { status: "DELIVERED" },
@@ -413,7 +412,7 @@ const processReturn = async (
         data: {
           orderId: returnRequest.orderId,
           status: "DELIVERED",
-          note: `Return request rejected: ${payload.note ?? "No reason provided"}`,
+          note: `Return rejected: ${payload.note ?? "No reason provided"}`,
         },
       });
     });
@@ -421,7 +420,7 @@ const processReturn = async (
     return "Return request rejected";
   }
 
-  // ── APPROVED ──────────────────────────────────
+  // ── APPROVED FLOW ─────────────────────────────
 
   const returnItems = returnRequest.returnItems as {
     orderItemId: number;
@@ -433,8 +432,13 @@ const processReturn = async (
 
   const refundTo = payload.refundTo ?? "WALLET";
 
+  // ✅ determine full vs partial return BEFORE transaction
+  const isFullReturn =
+    returnItems.reduce((sum, i) => sum + i.quantity, 0) ===
+    returnRequest.order.items.reduce((sum, i) => sum + i.quantity, 0);
+
   await prisma.$transaction(async (tx) => {
-    // 1. update return request
+    // 1. mark return request approved
     await tx.returnRequest.update({
       where: { id: returnRequestId },
       data: {
@@ -443,21 +447,25 @@ const processReturn = async (
       },
     });
 
-    // 2. update order status → RETURNED
+    // 2. update order status CONDITIONALLY
     await tx.order.update({
       where: { id: returnRequest.orderId },
-      data: { status: "RETURNED" },
+      data: {
+        status: isFullReturn ? "RETURNED" : "DELIVERED",
+      },
     });
 
     await tx.orderStatusHistory.create({
       data: {
         orderId: returnRequest.orderId,
-        status: "RETURNED",
-        note: payload.note ?? "Return approved",
+        status: isFullReturn ? "RETURNED" : "DELIVERED",
+        note: isFullReturn
+          ? (payload.note ?? "Full order returned")
+          : (payload.note ?? "Partial return processed"),
       },
     });
 
-    // 3. restore stock for each returned item
+    // 3. process each return item
     for (const retItem of returnItems) {
       const orderItem = returnRequest.order.items.find(
         (i) => i.id === retItem.orderItemId,
@@ -465,13 +473,12 @@ const processReturn = async (
 
       if (!orderItem) continue;
 
-      // restore variant stock
+      // restore stock
       await tx.productVariant.update({
         where: { id: orderItem.variantId },
         data: { stock: { increment: retItem.quantity } },
       });
 
-      // inventory log — stock restored
       await tx.inventoryLog.create({
         data: {
           variantId: orderItem.variantId,
@@ -481,13 +488,13 @@ const processReturn = async (
         },
       });
 
-      // 4. decrement product totalSold
+      // update product stats
       await tx.product.update({
         where: { id: orderItem.productId },
         data: { totalSold: { decrement: retItem.quantity } },
       });
 
-      // 5. decrement vendor totalSales
+      // update vendor stats
       const product = await tx.product.findUnique({
         where: { id: orderItem.productId },
         select: { vendorId: true },
@@ -501,11 +508,7 @@ const processReturn = async (
       }
     }
 
-    // 6. reverse coupon usage if FULL order is returned
-    const isFullReturn =
-      returnItems.reduce((sum, i) => sum + i.quantity, 0) ===
-      returnRequest.order.items.reduce((sum, i) => sum + i.quantity, 0);
-
+    // 4. reverse coupon ONLY if full return
     if (isFullReturn && returnRequest.order.couponId) {
       const coupon = await tx.coupon.findUnique({
         where: { id: returnRequest.order.couponId },
@@ -526,9 +529,8 @@ const processReturn = async (
       }
     }
 
-    // 7. process refund
+    // 5. process refund
     if (refundTo === "WALLET") {
-      // credit wallet
       let wallet = returnRequest.user.wallet;
 
       if (!wallet) {
@@ -555,65 +557,42 @@ const processReturn = async (
           referenceId: returnRequest.orderId,
         },
       });
-
-      // update payment record
-      if (returnRequest.order.payment) {
-        await tx.payment.update({
-          where: { id: returnRequest.order.payment.id },
-          data: {
-            status: isFullReturn ? "REFUNDED" : "PARTIALLY_REFUNDED",
-            refundedAmount: refundAmount,
-            refundedAt: new Date(),
-          },
-        });
-      }
-
-      // update order status → REFUNDED if full
-      if (isFullReturn) {
-        await tx.order.update({
-          where: { id: returnRequest.orderId },
-          data: { status: "REFUNDED" },
-        });
-
-        await tx.orderStatusHistory.create({
-          data: {
-            orderId: returnRequest.orderId,
-            status: "REFUNDED",
-            note: `Refund of ${refundAmount} BDT credited to wallet`,
-          },
-        });
-      }
-    } else {
-      // original payment method refund
-      // mark payment as refunded
-      if (returnRequest.order.payment) {
-        await tx.payment.update({
-          where: { id: returnRequest.order.payment.id },
-          data: {
-            status: isFullReturn ? "REFUNDED" : "PARTIALLY_REFUNDED",
-            refundedAmount: refundAmount,
-            refundedAt: new Date(),
-          },
-        });
-      }
-
-      if (isFullReturn) {
-        await tx.order.update({
-          where: { id: returnRequest.orderId },
-          data: { status: "REFUNDED" },
-        });
-
-        await tx.orderStatusHistory.create({
-          data: {
-            orderId: returnRequest.orderId,
-            status: "REFUNDED",
-            note: `Refund of ${refundAmount} BDT via original payment method`,
-          },
-        });
-      }
     }
 
-    // 8. mark return request as completed
+    // 6. update payment safely (IMPORTANT FIX)
+    if (returnRequest.order.payment) {
+      await tx.payment.update({
+        where: { id: returnRequest.order.payment.id },
+        data: {
+          status: isFullReturn ? "REFUNDED" : "PARTIALLY_REFUNDED",
+          refundedAmount: {
+            increment: refundAmount, // ✅ FIXED
+          },
+          refundedAt: new Date(),
+        },
+      });
+    }
+
+    // 7. mark order as refunded ONLY if full
+    if (isFullReturn) {
+      await tx.order.update({
+        where: { id: returnRequest.orderId },
+        data: { status: "REFUNDED" },
+      });
+
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: returnRequest.orderId,
+          status: "REFUNDED",
+          note:
+            refundTo === "WALLET"
+              ? `Refund ${refundAmount} BDT to wallet`
+              : `Refund ${refundAmount} BDT via original method`,
+        },
+      });
+    }
+
+    // 8. finalize return request
     await tx.returnRequest.update({
       where: { id: returnRequestId },
       data: { status: "COMPLETED" },
@@ -621,7 +600,8 @@ const processReturn = async (
   });
 
   return {
-    message: "Return approved and processed successfully",
+    message: "Return processed successfully",
+    type: isFullReturn ? "FULL_RETURN" : "PARTIAL_RETURN",
     refundAmount,
     refundTo,
   };
