@@ -14,24 +14,28 @@ router.get(
   InventoryLogController.getInventoryStats,
 );
 
+// this route is for monitoring purposes, to quickly identify variants that are low on stock without having to check the inventory logs
 router.get(
   "/low-stock",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
   InventoryLogController.getLowStockVariants,
 );
 
+// this route is for monitoring purposes, to quickly identify variants that are out of stock without having to check the inventory logs
 router.get(
   "/out-of-stock",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
   InventoryLogController.getOutOfStockVariants,
 );
 
+// get variant inventory logs with pagination and date range filtering
 router.get(
   "/variant/:variantId",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
   InventoryLogController.getVariantInventoryLogs,
 );
 
+// get all inventory logs with pagination and date range filtering
 router.get(
   "/",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
