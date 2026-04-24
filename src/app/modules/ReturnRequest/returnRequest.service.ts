@@ -594,7 +594,7 @@ const processReturn = async (
           note:
             refundTo === "WALLET"
               ? `Refund ${refundAmount} BDT to wallet`
-              : `Refund ${refundAmount} BDT via original method`,
+              : `Refund ${refundAmount} BDT via ${refundTo}`,
         },
       });
     }
@@ -602,7 +602,7 @@ const processReturn = async (
     // 8. finalize return request
     await tx.returnRequest.update({
       where: { id: returnRequestId },
-      data: { status: "COMPLETED" },
+      data: { status: "COMPLETED", paidThrough: refundTo as any },
     });
   });
 
@@ -693,21 +693,66 @@ const getReturnStats = async () => {
   const [
     total,
     pending,
-    returnedToWallet,
+    approved,
     rejected,
     completed,
-    totalWalletRefund,
-    totalDirectRefund,
+
+    // 🔥 refund breakdown by method
+    walletRefundCount,
+    bankRefundCount,
+    mobileRefundCount,
+
+    // 🔥 monetary aggregation by method
+    walletRefundAmount,
+    bankRefundAmount,
+    mobileRefundAmount,
+
+    // 🔥 overall refund value
+    totalRefundAmount,
   ] = await Promise.all([
+    // ── status counts ──
     prisma.returnRequest.count(),
     prisma.returnRequest.count({ where: { status: "PENDING" } }),
     prisma.returnRequest.count({ where: { status: "APPROVED" } }),
     prisma.returnRequest.count({ where: { status: "REJECTED" } }),
     prisma.returnRequest.count({ where: { status: "COMPLETED" } }),
+
+    // ── count by refund method (ONLY completed = actual money moved) ──
+    prisma.returnRequest.count({
+      where: { status: "COMPLETED", paidThrough: "WALLET" },
+    }),
+
+    prisma.returnRequest.count({
+      where: { status: "COMPLETED", paidThrough: "BANK_TRANSFER" },
+    }),
+
+    prisma.returnRequest.count({
+      where: {
+        status: "COMPLETED",
+        paidThrough: { in: ["BKASH", "NAGAD", "ROCKET"] },
+      },
+    }),
+
+    // ── amount by method ──
     prisma.returnRequest.aggregate({
-      where: { status: "APPROVED" },
+      where: { status: "COMPLETED", paidThrough: "WALLET" },
       _sum: { refundAmount: true },
     }),
+
+    prisma.returnRequest.aggregate({
+      where: { status: "COMPLETED", paidThrough: "BANK_TRANSFER" },
+      _sum: { refundAmount: true },
+    }),
+
+    prisma.returnRequest.aggregate({
+      where: {
+        status: "COMPLETED",
+        paidThrough: { in: ["BKASH", "NAGAD", "ROCKET"] },
+      },
+      _sum: { refundAmount: true },
+    }),
+
+    // ── total refunded money ──
     prisma.returnRequest.aggregate({
       where: { status: "COMPLETED" },
       _sum: { refundAmount: true },
@@ -715,13 +760,27 @@ const getReturnStats = async () => {
   ]);
 
   return {
+    // ── lifecycle overview ──
     total,
     pending,
-    returnedToWallet,
+    approved,
     rejected,
     completed,
-    totalWalletRefund: totalWalletRefund._sum.refundAmount ?? 0,
-    totalDirectRefund: totalDirectRefund._sum.refundAmount ?? 0,
+
+    // ── refund distribution (count) ──
+    refundBreakdown: {
+      wallet: walletRefundCount,
+      bank: bankRefundCount,
+      mobile: mobileRefundCount,
+    },
+
+    // ── financial breakdown ──
+    refundAmounts: {
+      wallet: walletRefundAmount._sum.refundAmount ?? 0,
+      bank: bankRefundAmount._sum.refundAmount ?? 0,
+      mobile: mobileRefundAmount._sum.refundAmount ?? 0,
+      total: totalRefundAmount._sum.refundAmount ?? 0,
+    },
   };
 };
 

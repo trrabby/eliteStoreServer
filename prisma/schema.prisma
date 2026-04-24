@@ -108,6 +108,14 @@ enum ReturnRequestStatus {
   COMPLETED
 }
 
+enum ReturnRequestRefundMethod {
+  WALLET
+  BANK_TRANSFER
+  BKASH
+  NAGAD
+  ROCKET
+}
+
 // ─────────────────────────────────────────
 // AUTH & IDENTITY
 // ─────────────────────────────────────────
@@ -706,18 +714,19 @@ model Shipment {
 // ─────────────────────────────────────────
 
 model ReturnRequest {
-  id           Int                 @id @default(autoincrement())
-  publicId     String              @unique @default(cuid())
+  id           Int                       @id @default(autoincrement())
+  publicId     String                    @unique @default(cuid())
   orderId      Int
   userId       Int
   reason       ReturnReason
   description  String?
-  status       ReturnRequestStatus @default(PENDING)
-  refundAmount Decimal?            @db.Decimal(12, 2)
   images       String[]
-  returnItems  Json                @default("[]")
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  status       ReturnRequestStatus       @default(PENDING)
+  refundAmount Decimal?                  @db.Decimal(12, 2)
+  paidThrough  ReturnRequestRefundMethod @default(WALLET) // ✅ NEW
+  returnItems  Json                      @default("[]")
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)

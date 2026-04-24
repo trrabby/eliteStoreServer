@@ -31,7 +31,9 @@ const processReturn = z.object({
     status: z.enum(["APPROVED", "REJECTED"]),
     refundAmount: z.number().positive().optional(),
     // where refund goes
-    refundTo: z.enum(["WALLET", "ORIGINAL_METHOD"]).default("WALLET"),
+    refundTo: z
+      .enum(["WALLET", "BANK_TRANSFER", "BKASH", "NAGAD", "ROCKET"])
+      .default("WALLET"),
     note: z.string().optional(),
   }),
 });
