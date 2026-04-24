@@ -543,6 +543,9 @@ const processReturn = async (
         });
       }
 
+      // 🔥 generate internal transactionId (consistent with system)
+      const transactionId = `REFUND-${returnRequest.id}-${Date.now()}`;
+
       await tx.wallet.update({
         where: { id: wallet.id },
         data: { balance: { increment: refundAmount } },
@@ -553,8 +556,12 @@ const processReturn = async (
           walletId: wallet.id,
           amount: refundAmount,
           type: "CREDIT",
+          status: "SUCCESS", // ✅ critical
+          transactionId, // ✅ traceable
+          gatewayRef: "", // no external gateway here
           reason: "RETURN_REFUND",
-          referenceId: returnRequest.orderId,
+          reference: `RETURN:${returnRequest.id}`, // ✅ structured reference
+          processedAt: new Date(), // ✅ lifecycle tracking
         },
       });
     }

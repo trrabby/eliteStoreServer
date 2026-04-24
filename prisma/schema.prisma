@@ -127,21 +127,22 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  accountInfo    AccountInfo?
-  addresses      Address[]
-  orders         Order[]
-  reviews        Review[]
-  reviewVotes    ReviewVote[]
-  wishlist       Wishlist?
-  cart           Cart?
-  notifications  Notification[]
-  sessions       Session[]
-  oauthAccounts  OAuthAccount[]
-  wallet         Wallet?
-  vendorProfile  VendorProfile?
-  returnRequests ReturnRequest[]
-  searchHistory  SearchHistory[]
-  couponsUsed    CouponUsage[]
+  accountInfo       AccountInfo?
+  addresses         Address[]
+  orders            Order[]
+  reviews           Review[]
+  reviewVotes       ReviewVote[]
+  wishlist          Wishlist?
+  cart              Cart?
+  notifications     Notification[]
+  sessions          Session[]
+  oauthAccounts     OAuthAccount[]
+  wallet            Wallet?
+  vendorProfile     VendorProfile?
+  returnRequests    ReturnRequest[]
+  searchHistory     SearchHistory[]
+  couponsUsed       CouponUsage[]
+  pushSubscriptions PushSubscription[]
 
   @@index([publicId])
   @@index([email])
@@ -850,20 +851,49 @@ model Wallet {
   @@map("wallets")
 }
 
+// model WalletTransaction {
+//   id        Int      @id @default(autoincrement())
+//   walletId  Int
+//   amount    Decimal  @db.Decimal(12, 2)
+//   type      String
+//   reason    String?
+//   reference String?
+
+//   createdAt DateTime @default(now())
+
+//   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+//   @@index([walletId])
+//   @@index([createdAt])
+//   @@map("wallet_transactions")
+// }
+
 model WalletTransaction {
-  id          Int      @id @default(autoincrement())
-  walletId    Int
-  amount      Decimal  @db.Decimal(12, 2)
-  type        String
-  reason      String?
-  referenceId Int?
-  createdAt   DateTime @default(now())
+  id Int @id @default(autoincrement())
+
+  publicId String? @unique @default(cuid()) // ✅ optional for now
+
+  walletId Int
+  amount   Decimal       @db.Decimal(12, 2)
+  type     String
+  status   PaymentStatus @default(PENDING)
+
+  transactionId   String? @unique
+  gatewayRef      String  @default("")
+  gatewayResponse Json?   @default("{}")
+
+  reason    String  @default("")
+  reference String? @default("") // ✅ allow null temporarily
+
+  processedAt DateTime?
+  failedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) // ✅ FIX (must have default)
 
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
   @@index([walletId])
-  @@index([createdAt])
-  @@map("wallet_transactions")
 }
 
 // ─────────────────────────────────────────
@@ -885,6 +915,20 @@ model Notification {
   @@index([userId, isRead])
   @@index([createdAt])
   @@map("notifications")
+}
+
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 // ─────────────────────────────────────────

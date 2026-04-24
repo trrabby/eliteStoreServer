@@ -27,6 +27,10 @@ export default {
     sslPaymentApi: process.env.SSL_PAYMENT_API,
     sslValidationApi: process.env.SSL_VALIDATIOIN_API,
     ipnUrl: process.env.SSL_IPN_URL,
+    // for wallet topup callbacks
+    walletSuccessUrl: process.env.WALLET_SUCCESS_URL,
+    walletFailUrl: process.env.WALLET_FAIL_URL,
+    walletCancelUrl: process.env.WALLET_CANCEL_URL,
   },
   bkash: {
     appKey: process.env.BKASH_APP_KEY,
@@ -45,5 +49,10 @@ export default {
     baseUrl: process.env.STEADFAST_BASE_URL,
     apiKey: process.env.STEADFAST_API_KEY,
     secretKey: process.env.STEADFAST_SECRET_KEY,
+  },
+  vapid: {
+    publicKey: process.env.VAPID_PUBLIC_KEY,
+    privateKey: process.env.VAPID_PRIVATE_KEY,
+    subject: process.env.VAPID_SUBJECT,
   },
 };

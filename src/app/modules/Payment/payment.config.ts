@@ -11,6 +11,10 @@ export const gatewayConfig = {
     validationApi: config.ssl.sslValidationApi as string,
     ipnUrl: config.ssl.ipnUrl as string,
     isLive: process.env.NODE_ENV === "production",
+    // wallet callback URLs for topups
+    walletSuccessUrl: config.ssl.walletSuccessUrl as string,
+    walletFailUrl: config.ssl.walletFailUrl as string,
+    walletCancelUrl: config.ssl.walletCancelUrl as string,
   },
 
   bkash: {

@@ -3,7 +3,7 @@ import jwt, { JwtPayload, Secret, SignOptions } from "jsonwebtoken";
 const generateToken = (
   payload: Record<string, any>,
   secret: Secret,
-  expiresIn: string
+  expiresIn: string,
 ) => {
   return jwt.sign(payload, secret, {
     algorithm: "HS256",
