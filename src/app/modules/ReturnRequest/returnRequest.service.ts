@@ -40,6 +40,8 @@ const createReturnRequest = async (
   payload: {
     orderId: number;
     reason: string;
+    requestedMeansOfRefund?: string;
+    mobile?: string;
     description?: string;
     items: {
       orderItemId: number;
@@ -126,7 +128,7 @@ const createReturnRequest = async (
     if (retItem.quantity > remainingQty) {
       throw new AppError(
         httpStatus.BAD_REQUEST,
-        `Cannot return ${retItem.quantity} — only ${remainingQty} remaining to return for item ${retItem.orderItemId}`,
+        `${alreadyReturnedQty === orderItem.quantity ? "You already returned all items" : `Cannot return ${retItem.quantity} — only ${remainingQty} remaining to return for item ${retItem.orderItemId}`}`,
       );
     }
   }
@@ -149,6 +151,8 @@ const createReturnRequest = async (
         images: images ?? [],
         // store return items in JSON for granular tracking
         returnItems: payload.items,
+        requestedMeansOfRefund:
+          `${payload.requestedMeansOfRefund}:${payload.mobile ?? ""}` as any,
       },
     });
 
@@ -162,7 +166,7 @@ const createReturnRequest = async (
       data: {
         orderId: payload.orderId,
         status: "RETURN_REQUESTED",
-        note: `Return requested: ${payload.reason}. Items: ${payload.items.length}`,
+        note: `Return requested for ${payload.items.map((i) => `item ${i.orderItemId} (qty ${i.quantity}) `).join(", ")} through ${payload.requestedMeansOfRefund || "WALLET"}`,
       },
     });
 

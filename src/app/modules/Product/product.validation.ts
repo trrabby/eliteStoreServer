@@ -87,12 +87,14 @@ const updateStock = z.object({
 });
 
 const addAttribute = z.object({
-  body: z.array(
-    z.object({
-      name: z.string().min(1, "Attribute name is required"),
-      value: z.string().min(1, "Attribute value is required"),
-    }),
-  ),
+  body: z.object({
+    attributes: z.array(
+      z.object({
+        name: z.string().min(1, "Attribute name is required"),
+        value: z.string().min(1, "Attribute value is required"),
+      }),
+    ),
+  }),
 });
 
 const addRelatedProducts = z.object({

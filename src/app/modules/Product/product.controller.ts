@@ -253,8 +253,8 @@ const deleteVariant = catchAsync(async (req, res) => {
 const addAttribute = catchAsync(async (req, res) => {
   const productId = Number(req.params.id);
   const { email } = req.user as { email: string };
-  const data = JSON.parse(req.body.data);
-  console.log(data);
+  const data = JSON.parse(req?.body?.data)?.attributes;
+  // console.log(data);
   const result = await productService.addAttribute(productId, email, data);
   sendResponse(res, {
     statusCode: httpStatus.CREATED,

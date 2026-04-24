@@ -3,6 +3,7 @@ import { z } from "zod";
 const createReturnRequest = z.object({
   body: z.object({
     orderId: z.number().int().positive("Order ID is required"),
+    requestedMeansOfRefund: z.string().optional(),
     reason: z.enum([
       "DAMAGED",
       "WRONG_ITEM",

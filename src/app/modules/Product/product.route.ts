@@ -2,9 +2,10 @@ import { Router } from "express";
 import { ProductController } from "./product.controller";
 import { productValidation } from "./product.validation";
 import auth from "../../middlewares/auth";
-import validateRequestFormdata from "../../middlewares/validateRequestFormdataOptionalPhoto";
+import validateRequestFormdataOptionalPhoto from "../../middlewares/validateRequestFormdataOptionalPhoto";
 import { multerUpload } from "../../../config/multer.config";
 import { Role } from "@prisma/client";
+import validateRequestFormdataMustPhotoArray from "../../middlewares/validateRequestFormdataMustPhotoArray";
 
 const router = Router();
 
@@ -36,7 +37,7 @@ router.post(
   "/create",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
-  validateRequestFormdata(productValidation.createProduct),
+  validateRequestFormdataOptionalPhoto(productValidation.createProduct),
   ProductController.createProduct,
 );
 
@@ -44,7 +45,7 @@ router.patch(
   "/update/:id",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
-  validateRequestFormdata(productValidation.updateProduct),
+  validateRequestFormdataOptionalPhoto(productValidation.updateProduct),
   ProductController.updateProduct,
 );
 
@@ -85,7 +86,7 @@ router.post(
   "/:id/variants",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
-  validateRequestFormdata(productValidation.createVariant),
+  validateRequestFormdataOptionalPhoto(productValidation.createVariant),
   ProductController.createVariant,
 );
 
@@ -93,7 +94,7 @@ router.patch(
   "/:id/variants/:variantId",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
-  validateRequestFormdata(productValidation.updateVariant),
+  validateRequestFormdataOptionalPhoto(productValidation.updateVariant),
   ProductController.updateVariant,
 );
 
@@ -101,7 +102,7 @@ router.patch(
   "/:id/variants/:variantId/stock",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
-  validateRequestFormdata(productValidation.updateStock),
+  validateRequestFormdataOptionalPhoto(productValidation.updateStock),
   ProductController.updateStock,
 );
 
@@ -119,7 +120,7 @@ router.post(
   "/:id/attributes",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
-  validateRequestFormdata(productValidation.addAttribute),
+  validateRequestFormdataMustPhotoArray(productValidation.addAttribute),
   ProductController.addAttribute,
 );
 
@@ -137,7 +138,7 @@ router.post(
   "/:id/related",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
-  validateRequestFormdata(productValidation.addRelatedProducts),
+  validateRequestFormdataOptionalPhoto(productValidation.addRelatedProducts),
   ProductController.addRelatedProducts,
 );
 
