@@ -3,12 +3,15 @@ import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { notificationService } from "./notification.service";
 import config from "../../../config";
+import { userService } from "../User/user.service";
 
 const getMyNotifications = catchAsync(async (req, res) => {
-  const user = req.user as { id: string; email: string; role: string };
-  const { page, limit, isRead, type } = req.query;
+  const user = req.user as { email: string; role: string };
+  // find userId from publicId of User
+  const userAccount = await userService.getAccountByEmail(user.email);
 
-  const result = await notificationService.getMyNotifications(Number(user.id), {
+  const { page, limit, isRead, type } = req.query;
+  const result = await notificationService.getMyNotifications(userAccount.id, {
     page: page ? Number(page) : undefined,
     limit: limit ? Number(limit) : undefined,
     isRead: isRead ? isRead === "true" : undefined,
@@ -24,10 +27,12 @@ const getMyNotifications = catchAsync(async (req, res) => {
 });
 
 const markAsRead = catchAsync(async (req, res) => {
-  const user = req.user as { id: string };
+  const user = req.user as { email: string };
+  // find userId from publicId of User
+  const userAccount = await userService.getAccountByEmail(user.email);
   const notificationId = Number(req.params.id);
   const result = await notificationService.markAsRead(
-    Number(user.id),
+    userAccount.id,
     notificationId,
   );
   sendResponse(res, {
@@ -39,8 +44,9 @@ const markAsRead = catchAsync(async (req, res) => {
 });
 
 const markAllAsRead = catchAsync(async (req, res) => {
-  const user = req.user as { id: string };
-  const result = await notificationService.markAllAsRead(Number(user.id));
+  const user = req.user as { email: string };
+  const userAccount = await userService.getAccountByEmail(user.email);
+  const result = await notificationService.markAllAsRead(userAccount.id);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -50,8 +56,9 @@ const markAllAsRead = catchAsync(async (req, res) => {
 });
 
 const getUnreadCount = catchAsync(async (req, res) => {
-  const user = req.user as { id: string };
-  const count = await notificationService.getUnreadCount(Number(user.id));
+  const user = req.user as { email: string };
+  const userAccount = await userService.getAccountByEmail(user.email);
+  const count = await notificationService.getUnreadCount(userAccount.id);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -61,9 +68,10 @@ const getUnreadCount = catchAsync(async (req, res) => {
 });
 
 const deleteNotification = catchAsync(async (req, res) => {
-  const user = req.user as { id: string };
+  const user = req.user as { email: string };
+  const userAccount = await userService.getAccountByEmail(user.email);
   const notificationId = Number(req.params.id);
-  await notificationService.deleteNotification(Number(user.id), notificationId);
+  await notificationService.deleteNotification(userAccount.id, notificationId);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -73,8 +81,9 @@ const deleteNotification = catchAsync(async (req, res) => {
 });
 
 const clearReadNotifications = catchAsync(async (req, res) => {
-  const user = req.user as { id: string };
-  await notificationService.clearReadNotifications(Number(user.id));
+  const user = req.user as { email: string };
+  const userAccount = await userService.getAccountByEmail(user.email);
+  await notificationService.clearReadNotifications(userAccount.id);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -85,9 +94,10 @@ const clearReadNotifications = catchAsync(async (req, res) => {
 
 // push subscription
 const savePushSubscription = catchAsync(async (req, res) => {
-  const user = req.user as { id: string };
+  const user = req.user as { email: string };
+  const userAccount = await userService.getAccountByEmail(user.email);
   const data = JSON.parse(req.body.data);
-  await notificationService.savePushSubscription(Number(user.id), data);
+  await notificationService.savePushSubscription(userAccount.id, data);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -97,10 +107,11 @@ const savePushSubscription = catchAsync(async (req, res) => {
 });
 
 const removePushSubscription = catchAsync(async (req, res) => {
-  const user = req.user as { id: string };
+  const user = req.user as { email: string };
+  const userAccount = await userService.getAccountByEmail(user.email);
   const data = JSON.parse(req.body.data);
   await notificationService.removePushSubscription(
-    Number(user.id),
+    userAccount.id,
     data.endpoint,
   );
   sendResponse(res, {

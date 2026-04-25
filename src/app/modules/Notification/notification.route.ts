@@ -5,6 +5,7 @@ import auth from "../../middlewares/auth";
 import validateRequestFormdata from "../../middlewares/validateRequestFormdataOptionalPhoto";
 import { multerUpload } from "../../../config/multer.config";
 import { Role } from "@prisma/client";
+import validateRequestFormdataOptionalPhoto from "../../middlewares/validateRequestFormdataOptionalPhoto";
 
 const router = Router();
 
@@ -78,6 +79,9 @@ router.post(
   "/bulk",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
+  validateRequestFormdataOptionalPhoto(
+    notificationValidation.createBulkNotification,
+  ),
   NotificationController.sendBulkNotification,
 );
 

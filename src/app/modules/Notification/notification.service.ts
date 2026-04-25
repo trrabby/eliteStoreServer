@@ -202,7 +202,7 @@ const getMyNotifications = async (
   const page = query.page ?? 1;
   const limit = query.limit ?? 20;
   const skip = (page - 1) * limit;
-
+  // console.log(userId);
   const where: any = { userId };
 
   if (query.isRead !== undefined) where.isRead = query.isRead;
