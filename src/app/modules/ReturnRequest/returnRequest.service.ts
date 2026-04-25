@@ -166,7 +166,7 @@ const createReturnRequest = async (
       data: {
         orderId: payload.orderId,
         status: "RETURN_REQUESTED",
-        note: `Return requested for ${payload.items.map((i) => `item ${i.orderItemId} (qty ${i.quantity}) `).join(", ")} through ${payload.requestedMeansOfRefund || "WALLET"}`,
+        note: `Return requested for ${payload.items.map((i) => `Ordered Item Serial: ${i.orderItemId} (qty ${i.quantity}) `).join(", ")} through ${payload.requestedMeansOfRefund || "WALLET"}`,
       },
     });
 
@@ -452,17 +452,46 @@ const processReturn = async (
     });
 
     // 2. update order status CONDITIONALLY
+    // await tx.order.update({
+    //   where: { id: returnRequest.orderId },
+    //   data: {
+    //     status: isFullReturn ? "RETURNED" : "DELIVERED",
+    //   },
+    // });
+
+    // check whether all items are returned by more than one return request (edge case)
+    const allReturned = await tx.returnRequest.findMany({
+      where: {
+        orderId: returnRequest.orderId,
+        status: { in: ["APPROVED", "COMPLETED"] },
+      },
+      select: { returnItems: true },
+    });
+
     await tx.order.update({
       where: { id: returnRequest.orderId },
       data: {
-        status: isFullReturn ? "RETURNED" : "DELIVERED",
+        status: allReturned.some((r) => {
+          const items = r.returnItems as {
+            orderItemId: number;
+            quantity: number;
+          }[];
+          return (
+            items.reduce((sum, i) => sum + i.quantity, 0) ===
+            returnRequest.order.items.reduce((sum, i) => sum + i.quantity, 0)
+          );
+        })
+          ? "RETURNED"
+          : isFullReturn
+            ? "RETURNED"
+            : "DELIVERED",
       },
     });
 
     await tx.orderStatusHistory.create({
       data: {
         orderId: returnRequest.orderId,
-        status: isFullReturn ? "RETURNED" : "DELIVERED",
+        status: "RETURNED",
         note: isFullReturn
           ? (payload.note ?? "Full order returned")
           : (payload.note ?? "Partial return processed"),
@@ -572,6 +601,7 @@ const processReturn = async (
 
     // 6. update payment safely (IMPORTANT FIX)
     if (returnRequest.order.payment) {
+      console.log(refundAmount);
       await tx.payment.update({
         where: { id: returnRequest.order.payment.id },
         data: {

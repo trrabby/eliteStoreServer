@@ -47,6 +47,12 @@ const createShipment = async (payload: {
       "Payment must be completed before shipping",
     );
   }
+  if (!order.payment) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Please complete payment before shipping.",
+    );
+  }
 
   if (order.shipment) {
     throw new AppError(
