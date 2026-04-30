@@ -433,7 +433,7 @@ const getMyProducts = async (
     where: { email, isActive: true },
     include: { vendorProfile: true },
   });
-  console.log(email, user?.vendorProfile);
+  // console.log(email, user?.vendorProfile);
   if (!user?.vendorProfile) {
     throw new AppError(httpStatus.NOT_FOUND, "Vendor profile not found");
   }

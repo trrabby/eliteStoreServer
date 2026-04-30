@@ -61,7 +61,7 @@ const getCategoryBySlug = catchAsync(async (req, res) => {
 
 const getCategoryById = catchAsync(async (req, res) => {
   const id = Number(req.params.id);
-  console.log(id);
+  // console.log(id);
   const result = await categoryService.getCategoryById(id);
   sendResponse(res, {
     statusCode: httpStatus.OK,

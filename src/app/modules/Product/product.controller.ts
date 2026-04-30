@@ -84,7 +84,7 @@ const getProductById = catchAsync(async (req, res) => {
 const getMyProducts = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
   const { page, limit, status } = req.query;
-  console.log(req);
+  // console.log(req);
   const result = await productService.getMyProducts(email, {
     page: page ? Number(page) : undefined,
     limit: limit ? Number(limit) : undefined,

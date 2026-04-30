@@ -601,7 +601,7 @@ const processReturn = async (
 
     // 6. update payment safely (IMPORTANT FIX)
     if (returnRequest.order.payment) {
-      console.log(refundAmount);
+      // console.log(refundAmount);
       await tx.payment.update({
         where: { id: returnRequest.order.payment.id },
         data: {

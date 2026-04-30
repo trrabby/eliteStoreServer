@@ -13,7 +13,7 @@ const registerUser = async (payload: {
   lastName: string;
   phone?: string;
 }) => {
-  console.log(payload.email);
+  // console.log(payload.email);
   const isUserExists = await prisma.user.findUnique({
     where: { email: payload.email },
   });

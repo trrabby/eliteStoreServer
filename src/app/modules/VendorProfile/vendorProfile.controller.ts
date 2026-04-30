@@ -13,7 +13,7 @@ const createVendorProfile = catchAsync(async (req, res) => {
     ? (files["banner"][0].path as string)
     : undefined;
   const data = JSON.parse(req.body.data);
-  console.log(logo, banner);
+  // console.log(logo, banner);
   const result = await vendorProfileService.createVendorProfile(
     email,
     data,
