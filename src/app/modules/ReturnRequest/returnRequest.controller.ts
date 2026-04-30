@@ -2,18 +2,31 @@ import httpStatus from "http-status";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { returnRequestService } from "./returnRequest.service";
+import { uploadToCloudinary } from "../../utils/uploadToCloudinary";
 
 const createReturnRequest = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
   const files = req.files as Express.Multer.File[] | undefined;
-  const images = files?.map((f) => f.path) ?? [];
+
+  // parse structured body
   const data = JSON.parse(req.body.data);
+
+  let images: string[] = [];
+
+  if (files?.length) {
+    const uploaded = await Promise.all(
+      files.map((file) => uploadToCloudinary(file.buffer, "returns")),
+    );
+
+    images = uploaded.map((img: any) => img.secure_url);
+  }
   const result = await returnRequestService.createReturnRequest(
     email,
     data,
     images,
   );
-  sendResponse(res, {
+
+  return sendResponse(res, {
     statusCode: httpStatus.CREATED,
     success: true,
     message: "Return request submitted successfully",

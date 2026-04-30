@@ -2,14 +2,27 @@ import httpStatus from "http-status";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { reviewService } from "./review.service";
+import { uploadToCloudinary } from "../../utils/uploadToCloudinary";
 
 const createReview = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
   const files = req.files as Express.Multer.File[] | undefined;
-  const images = files?.map((f) => f.path) ?? [];
+
   const data = JSON.parse(req.body.data);
+
+  let images: string[] = [];
+
+  if (files?.length) {
+    const uploaded = await Promise.all(
+      files.map((file) => uploadToCloudinary(file.buffer, "reviews")),
+    );
+
+    images = uploaded.map((img: any) => img.secure_url);
+  }
+  console.log(images);
   const result = await reviewService.createReview(email, data, images);
-  sendResponse(res, {
+
+  return sendResponse(res, {
     statusCode: httpStatus.CREATED,
     success: true,
     message: "Review submitted successfully",
@@ -82,7 +95,16 @@ const updateReview = catchAsync(async (req, res) => {
   const id = Number(req.params.id);
   const { email } = req.user as { email: string };
   const files = req.files as Express.Multer.File[] | undefined;
-  const images = files?.map((f) => f.path) ?? [];
+  let images: string[] = [];
+
+  if (files?.length) {
+    const uploaded = await Promise.all(
+      files.map((file) => uploadToCloudinary(file.buffer, "reviews")),
+    );
+
+    images = uploaded.map((img: any) => img.secure_url);
+  }
+  // console.log(images);
   const data = JSON.parse(req.body.data);
   const result = await reviewService.updateReview(id, email, data, images);
   sendResponse(res, {

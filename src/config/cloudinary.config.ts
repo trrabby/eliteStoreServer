@@ -1,5 +1,5 @@
-import { v2 as cloudinary } from 'cloudinary';
-import config from '.';
+import { v2 as cloudinary } from "cloudinary";
+import config from ".";
 
 cloudinary.config({
   cloud_name: config.cloudinary_cloud_name,
@@ -7,4 +7,4 @@ cloudinary.config({
   api_secret: config.cloudinary_api_secret,
 });
 
-export const cloudinaryUpload = cloudinary;
+export default cloudinary;

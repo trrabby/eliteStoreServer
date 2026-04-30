@@ -2,6 +2,7 @@ import httpStatus from "http-status";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { userService } from "./user.service";
+import { uploadToCloudinary } from "../../utils/uploadToCloudinary";
 
 const registerUser = catchAsync(async (req, res) => {
   const data = JSON.parse(req.body.data);
@@ -59,9 +60,24 @@ const getAnAccountByEmail = catchAsync(async (req, res) => {
 
 const updateMyProfile = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
-  // console.log(email);
-  const result = await userService.updateMyProfile(email, req);
-  sendResponse(res, {
+
+  const file = req.file as Express.Multer.File | undefined;
+
+  let profileImage: string | undefined;
+
+  if (file) {
+    const result: any = await uploadToCloudinary(file.buffer, "profiles");
+    profileImage = result.secure_url;
+  }
+
+  const data = req.body; // already parsed JSON or form-data fields
+  // console.log(profileImage);
+  const result = await userService.updateMyProfile(email, {
+    ...data,
+    profileImage,
+  });
+
+  return sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: "Profile updated successfully",
