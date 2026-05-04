@@ -8,35 +8,43 @@ datasource db {
 }
 
 model User {
-  id                Int                @id @default(autoincrement())
-  publicId          String             @unique @default(cuid())
-  email             String             @unique
-  phone             String?            @unique
-  password          String?
-  role              Role               @default(CUSTOMER)
-  isEmailVerified   Boolean            @default(false)
-  isPhoneVerified   Boolean            @default(false)
-  isActive          Boolean            @default(true)
-  isBanned          Boolean            @default(false)
-  lastLoginAt       DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  accountInfo       AccountInfo?
-  addresses         Address[]
-  cart              Cart?
-  couponsUsed       CouponUsage[]
-  notifications     Notification[]
-  oauthAccounts     OAuthAccount[]
-  orders            Order[]
-  pushSubscriptions PushSubscription[]
-  returnRequests    ReturnRequest[]
-  reviewVotes       ReviewVote[]
-  reviews           Review[]
-  searchHistory     SearchHistory[]
-  sessions          Session[]
-  vendorProfile     VendorProfile?
-  wallet            Wallet?
-  wishlist          Wishlist?
+  id                             Int                  @id @default(autoincrement())
+  publicId                       String               @unique @default(cuid())
+  email                          String               @unique
+  phone                          String?              @unique
+  password                       String?
+  role                           Role                 @default(CUSTOMER)
+  isEmailVerified                Boolean              @default(false)
+  isPhoneVerified                Boolean              @default(false)
+  isActive                       Boolean              @default(true)
+  isBanned                       Boolean              @default(false)
+  lastLoginAt                    DateTime?
+  createdAt                      DateTime             @default(now())
+  updatedAt                      DateTime             @updatedAt
+  accountInfo                    AccountInfo?
+  addresses                      Address[]
+  cart                           Cart?
+  couponsUsed                    CouponUsage[]
+  notifications                  Notification[]
+  oauthAccounts                  OAuthAccount[]
+  orders                         Order[]
+  pushSubscriptions              PushSubscription[]
+  returnRequests                 ReturnRequest[]
+  reviewVotes                    ReviewVote[]
+  reviews                        Review[]
+  searchHistory                  SearchHistory[]
+  sessions                       Session[]
+  vendorProfile                  VendorProfile?
+  wallet                         Wallet?
+  wishlist                       Wishlist?
+  flashSalesCreated              FlashSale[]          @relation("FlashSaleCreator")
+  orderStatusUpdates             Order[]              @relation("OrderStatusUpdater")
+  productStatusUpdates           Product[]            @relation("ProductStatusUpdater")
+  flashSaleStatusUpdates         FlashSale[]          @relation("FlashSaleStatusUpdater")
+  orderStatusHistories           OrderStatusHistory[] @relation("OrderStatusHistoryUpdater")
+  returnRequestStatusUpdates     ReturnRequest[]      @relation("ReturnRequestStatusUpdater")
+  reviewStatusUpdates            Review[]             @relation("ReviewStatusUpdater")
+  walletTransactionStatusUpdates WalletTransaction[]  @relation("WalletTransactionStatusUpdater")
 
   @@index([publicId])
   @@index([email])
@@ -125,25 +133,26 @@ model Address {
 }
 
 model VendorProfile {
-  id           Int       @id @default(autoincrement())
-  publicId     String    @unique @default(cuid())
-  userId       Int       @unique
-  storeName    String    @unique
-  slug         String    @unique
+  id           Int         @id @default(autoincrement())
+  publicId     String      @unique @default(cuid())
+  userId       Int         @unique
+  storeName    String      @unique
+  slug         String      @unique
   logo         String?
   banner       String?
   description  String?
-  rating       Decimal   @default(0) @db.Decimal(3, 2)
-  totalSales   Int       @default(0)
-  isVerified   Boolean   @default(false)
-  isActive     Boolean   @default(true)
+  rating       Decimal     @default(0) @db.Decimal(3, 2)
+  totalSales   Int         @default(0)
+  isVerified   Boolean     @default(false)
+  isActive     Boolean     @default(true)
   returnPolicy String?
   supportEmail String?
   supportPhone String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
   products     Product[]
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flashSales   FlashSale[]
 
   @@index([publicId])
   @@index([slug])
@@ -197,40 +206,43 @@ model Brand {
 }
 
 model Product {
-  id               Int                @id @default(autoincrement())
-  publicId         String             @unique @default(cuid())
-  vendorId         Int?
-  brandId          Int?
-  name             String
-  slug             String             @unique
-  shortDescription String?
-  description      String?
-  status           ProductStatus      @default(DRAFT)
-  isFeatured       Boolean            @default(false)
-  tags             String[]
-  metaTitle        String?
-  metaDesc         String?
-  metaKeywords     String?
-  totalSold        Int                @default(0)
-  averageRating    Decimal            @default(0) @db.Decimal(3, 2)
-  reviewCount      Int                @default(0)
-  viewCount        Int                @default(0)
-  wishlistCount    Int                @default(0)
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  cartItems        CartItem[]
-  orderItems       OrderItem[]
-  attributes       ProductAttribute[]
-  categories       ProductCategory[]
-  discounts        ProductDiscount[]
-  images           ProductImage[]
-  variants         ProductVariant[]
-  brand            Brand?             @relation(fields: [brandId], references: [id])
-  vendor           VendorProfile?     @relation(fields: [vendorId], references: [id])
-  relatedProducts  RelatedProduct[]   @relation("ProductRelations")
-  relatedTo        RelatedProduct[]   @relation("RelatedTo")
-  reviews          Review[]
-  wishlistItems    WishlistItem[]
+  id                Int                @id @default(autoincrement())
+  publicId          String             @unique @default(cuid())
+  vendorId          Int?
+  brandId           Int?
+  name              String
+  slug              String             @unique
+  shortDescription  String?
+  description       String?
+  status            ProductStatus      @default(DRAFT)
+  statusUpdatedById Int?
+  isFeatured        Boolean            @default(false)
+  tags              String[]
+  metaTitle         String?
+  metaDesc          String?
+  metaKeywords      String?
+  totalSold         Int                @default(0)
+  averageRating     Decimal            @default(0) @db.Decimal(3, 2)
+  reviewCount       Int                @default(0)
+  viewCount         Int                @default(0)
+  wishlistCount     Int                @default(0)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  statusUpdatedBy   User?              @relation("ProductStatusUpdater", fields: [statusUpdatedById], references: [id])
+  cartItems         CartItem[]
+  orderItems        OrderItem[]
+  attributes        ProductAttribute[]
+  categories        ProductCategory[]
+  discounts         ProductDiscount[]
+  images            ProductImage[]
+  variants          ProductVariant[]
+  brand             Brand?             @relation(fields: [brandId], references: [id])
+  vendor            VendorProfile?     @relation(fields: [vendorId], references: [id])
+  relatedProducts   RelatedProduct[]   @relation("ProductRelations")
+  relatedTo         RelatedProduct[]   @relation("RelatedTo")
+  reviews           Review[]
+  wishlistItems     WishlistItem[]
+  flashSaleItem     FlashSaleItem?
 
   @@index([publicId])
   @@index([slug])
@@ -415,6 +427,58 @@ model WishlistItem {
   @@map("wishlist_items")
 }
 
+model FlashSale {
+  id                Int             @id @default(autoincrement())
+  publicId          String          @unique @default(cuid())
+  title             String
+  description       String?
+  banner            String?
+  status            FlashSaleStatus @default(DRAFT)
+  statusUpdatedById Int?
+  startsAt          DateTime
+  endsAt            DateTime
+  vendorId          Int?
+  createdById       Int
+  isActive          Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  statusUpdatedBy   User?           @relation("FlashSaleStatusUpdater", fields: [statusUpdatedById], references: [id])
+  vendor            VendorProfile?  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdBy         User            @relation("FlashSaleCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  items             FlashSaleItem[]
+
+  @@index([publicId])
+  @@index([status, startsAt, endsAt])
+  @@index([vendorId])
+  @@index([isActive])
+  @@map("flash_sales")
+}
+
+model FlashSaleItem {
+  id            Int          @id @default(autoincrement())
+  publicId      String       @unique @default(cuid())
+  flashSaleId   Int
+  productId     Int          @unique // ← ONE active offer per product enforced here
+  discountType  DiscountType // PERCENTAGE | FLAT — reuse existing enum
+  discountValue Decimal      @db.Decimal(10, 2)
+  maxDiscount   Decimal?     @db.Decimal(10, 2) // cap for percentage type
+  originalPrice Decimal      @db.Decimal(12, 2) // snapshot of price at time of offer
+  salePrice     Decimal      @db.Decimal(12, 2) // computed and stored
+  stock         Int? // optional limit — null = unlimited
+  soldCount     Int          @default(0)
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  flashSale FlashSale @relation(fields: [flashSaleId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([flashSaleId])
+  @@index([productId])
+  @@index([isActive])
+  @@map("flash_sale_items")
+}
+
 model Order {
   id                Int                  @id @default(autoincrement())
   publicId          String               @unique @default(cuid())
@@ -423,6 +487,7 @@ model Order {
   shippingAddressId Int
   billingAddressId  Int?
   status            OrderStatus          @default(PENDING)
+  statusUpdatedById Int?
   subtotal          Decimal              @db.Decimal(12, 2)
   shippingFee       Decimal              @default(0) @db.Decimal(12, 2)
   discount          Decimal              @default(0) @db.Decimal(12, 2)
@@ -434,6 +499,7 @@ model Order {
   deliveredAt       DateTime?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
+  statusUpdatedBy   User?                @relation("OrderStatusUpdater", fields: [statusUpdatedById], references: [id])
   items             OrderItem[]
   statusHistory     OrderStatusHistory[]
   billingAddress    Address?             @relation("BillingAddress", fields: [billingAddressId], references: [id], onDelete: Restrict)
@@ -472,12 +538,14 @@ model OrderItem {
 }
 
 model OrderStatusHistory {
-  id        Int         @id @default(autoincrement())
-  orderId   Int
-  status    OrderStatus
-  note      String?
-  createdAt DateTime    @default(now())
-  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id                Int         @id @default(autoincrement())
+  orderId           Int
+  status            OrderStatus
+  statusUpdatedById Int?
+  note              String?
+  createdAt         DateTime    @default(now())
+  order             Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  statusUpdatedBy   User?       @relation("OrderStatusHistoryUpdater", fields: [statusUpdatedById], references: [id])
 
   @@index([orderId])
   @@map("order_status_histories")
@@ -538,6 +606,8 @@ model ReturnRequest {
   updatedAt              DateTime                   @updatedAt
   returnItems            Json                       @default("[]")
   status                 ReturnRequestStatus        @default(PENDING)
+  statusUpdatedById      Int?
+  statusUpdatedBy        User?                      @relation("ReturnRequestStatusUpdater", fields: [statusUpdatedById], references: [id])
   paidThrough            ReturnRequestRefundMethod? @default(YET_TO_BE_PAID)
   requestedMeansOfRefund String?                    @default("WALLET")
   order                  Order                      @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -551,24 +621,26 @@ model ReturnRequest {
 }
 
 model Review {
-  id           Int          @id @default(autoincrement())
-  publicId     String       @unique @default(cuid())
-  productId    Int
-  userId       Int
-  orderItemId  Int?         @unique
-  rating       Int
-  title        String?
-  body         String?
-  images       String[]
-  status       ReviewStatus @default(APPROVED)
-  isVerified   Boolean      @default(false)
-  helpfulCount Int          @default(0)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  votes        ReviewVote[]
-  orderItem    OrderItem?   @relation(fields: [orderItemId], references: [id])
-  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                Int          @id @default(autoincrement())
+  publicId          String       @unique @default(cuid())
+  productId         Int
+  userId            Int
+  orderItemId       Int?         @unique
+  rating            Int
+  title             String?
+  body              String?
+  images            String[]
+  status            ReviewStatus @default(APPROVED)
+  statusUpdatedById Int?
+  isVerified        Boolean      @default(false)
+  helpfulCount      Int          @default(0)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  votes             ReviewVote[]
+  orderItem         OrderItem?   @relation(fields: [orderItemId], references: [id])
+  product           Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  statusUpdatedBy   User?        @relation("ReviewStatusUpdater", fields: [statusUpdatedById], references: [id])
 
   @@unique([productId, userId, orderItemId])
   @@index([publicId])
@@ -655,22 +727,24 @@ model Wallet {
 }
 
 model WalletTransaction {
-  id              Int                            @id @default(autoincrement())
-  publicId        String?                        @unique @default(cuid())
-  walletId        Int
-  amount          Decimal                        @db.Decimal(12, 2)
-  type            String
-  status          WalletTransactionPaymentStatus @default(PENDING)
-  transactionId   String?                        @unique
-  gatewayRef      String                         @default("")
-  gatewayResponse Json?                          @default("{}")
-  reason          String                         @default("")
-  reference       String?                        @default("")
-  processedAt     DateTime?
-  failedAt        DateTime?
-  createdAt       DateTime                       @default(now())
-  updatedAt       DateTime                       @default(now())
-  wallet          Wallet                         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  id                Int                            @id @default(autoincrement())
+  publicId          String?                        @unique @default(cuid())
+  walletId          Int
+  amount            Decimal                        @db.Decimal(12, 2)
+  type              String
+  status            WalletTransactionPaymentStatus @default(PENDING)
+  statusUpdatedById Int?
+  transactionId     String?                        @unique
+  gatewayRef        String                         @default("")
+  gatewayResponse   Json?                          @default("{}")
+  reason            String                         @default("")
+  reference         String?                        @default("")
+  processedAt       DateTime?
+  failedAt          DateTime?
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @default(now())
+  wallet            Wallet                         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  statusUpdatedBy   User?                          @relation("WalletTransactionStatusUpdater", fields: [statusUpdatedById], references: [id])
 
   @@index([walletId])
 }
@@ -749,6 +823,13 @@ enum OrderStatus {
   RETURN_REQUESTED
   RETURNED
   REFUNDED
+}
+
+enum FlashSaleStatus {
+  DRAFT
+  ACTIVE
+  ENDED
+  CANCELLED
 }
 
 enum PaymentStatus {
