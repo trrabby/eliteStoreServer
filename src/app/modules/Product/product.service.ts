@@ -7,7 +7,7 @@ import AppError from "../../errors/AppError";
 // HELPERS
 // ─────────────────────────────────────────
 
-const generateSlug = async (name: string): Promise<string> => {
+export const generateSlug = async (name: string): Promise<string> => {
   const base = slugify(name, { lower: true, strict: true });
   let slug = base;
   let count = 1;
@@ -376,55 +376,6 @@ const getProductById = async (id: number) => {
   return product;
 };
 
-// const getProductById = async (id: number) => {
-//   const product = await prisma.product.findUnique({
-//     where: { id },
-//     include: {
-//       brand: { select: { id: true, name: true } },
-//       vendor: { select: { id: true, storeName: true } },
-//       categories: { include: { category: true } },
-//       images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] },
-//       variants: {
-//         include: {
-//           optionValues: {
-//             include: {
-//               value: {
-//                 include: {
-//                   option: true,
-//                 },
-//               },
-//             },
-//           },
-//         },
-//       },
-//       attributes: true,
-//       _count: {
-//         select: { reviews: true, orderItems: true },
-//       },
-//     },
-//   });
-
-//   if (!product) {
-//     throw new AppError(httpStatus.NOT_FOUND, "Product not found");
-//   }
-
-//   // Transform the variants to have clean optionValues
-//   const transformedProduct = {
-//     ...product,
-//     variants: product.variants.map((variant) => ({
-//       ...variant,
-//       optionValues: variant.optionValues.map((ov) => ({
-//         name: ov.value.option.name,
-//         value: ov.value.value,
-//       })),
-//     })),
-//   };
-
-//   return transformedProduct;
-// };
-
-// get my products — vendor
-
 const getMyProducts = async (
   email: string,
   query: { page?: number; limit?: number; status?: string },
@@ -481,6 +432,12 @@ const updateProduct = async (
     metaKeywords?: string;
   },
 ) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
   const product = await prisma.product.findUnique({ where: { id } });
 
   if (!product) {
@@ -506,6 +463,7 @@ const updateProduct = async (
       where: { id },
       data: {
         ...updateData,
+        statusUpdatedById: user.id,
         ...(slug && { slug }),
       },
     });

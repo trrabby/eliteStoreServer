@@ -96,7 +96,7 @@ const createVendorProfile = async (
     // upgrade user role to VENDOR
     await tx.user.update({
       where: { id: user.id },
-      data: { role: Role.VENDOR },
+      data: { role: Role.VENDOR, vendorProfileId: profile.id },
     });
 
     return profile;
@@ -295,7 +295,15 @@ const updateVendorProfile = async (
 };
 
 // verify vendor — admin only
-const verifyVendor = async (publicId: string) => {
+const verifyVendor = async (publicId: string, email: string) => {
+  const updater = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+
+  if (!updater) {
+    throw new AppError(httpStatus.NOT_FOUND, "Your account was not found");
+  }
+
   const vendor = await prisma.vendorProfile.findUnique({
     where: { publicId },
   });
@@ -310,7 +318,7 @@ const verifyVendor = async (publicId: string) => {
 
   const updated = await prisma.vendorProfile.update({
     where: { publicId },
-    data: { isVerified: true },
+    data: { isVerified: true, verifiedById: updater.id },
     select: {
       publicId: true,
       storeName: true,

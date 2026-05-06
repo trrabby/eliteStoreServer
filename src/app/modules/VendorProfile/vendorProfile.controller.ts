@@ -2,24 +2,45 @@ import httpStatus from "http-status";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { vendorProfileService } from "./vendorProfile.service";
+import { uploadToCloudinary } from "../../utils/uploadToCloudinary";
 
 const createVendorProfile = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
+
   const files = req.files as
     | { [fieldname: string]: Express.Multer.File[] }
     | undefined;
-  const logo = files?.["logo"] ? (files["logo"][0].path as string) : undefined;
-  const banner = files?.["banner"]
-    ? (files["banner"][0].path as string)
-    : undefined;
+
+  let logo: string | undefined;
+  let banner: string | undefined;
+
+  // Upload logo
+  if (files?.logo?.[0]) {
+    const result: any = await uploadToCloudinary(
+      files.logo[0].buffer,
+      "vendors",
+    );
+    logo = result.secure_url;
+  }
+
+  // Upload banner
+  if (files?.banner?.[0]) {
+    const result: any = await uploadToCloudinary(
+      files.banner[0].buffer,
+      "vendors",
+    );
+    banner = result.secure_url;
+  }
+
   const data = JSON.parse(req.body.data);
-  // console.log(logo, banner);
+
   const result = await vendorProfileService.createVendorProfile(
     email,
     data,
     logo,
     banner,
   );
+
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
     success: true,
@@ -72,11 +93,27 @@ const updateVendorProfile = catchAsync(async (req, res) => {
   const files = req.files as
     | { [fieldname: string]: Express.Multer.File[] }
     | undefined;
-  const logo = files?.["logo"] ? (files["logo"][0].path as string) : undefined;
-  const banner = files?.["banner"]
-    ? (files["banner"][0].path as string)
-    : undefined;
-  //   console.log(logo, banner);
+  let logo: string | undefined;
+  let banner: string | undefined;
+
+  // Upload logo if provided
+  if (files?.logo?.[0]) {
+    const result: any = await uploadToCloudinary(
+      files.logo[0].buffer,
+      "vendors",
+    );
+    logo = result.secure_url;
+  }
+
+  // Upload banner if provided
+  if (files?.banner?.[0]) {
+    const result: any = await uploadToCloudinary(
+      files.banner[0].buffer,
+      "vendors",
+    );
+    banner = result.secure_url;
+  }
+
   const result = await vendorProfileService.updateVendorProfile(
     email,
     data,
@@ -92,8 +129,9 @@ const updateVendorProfile = catchAsync(async (req, res) => {
 });
 
 const verifyVendor = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const { publicId } = req.params;
-  const result = await vendorProfileService.verifyVendor(publicId);
+  const result = await vendorProfileService.verifyVendor(publicId, email);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

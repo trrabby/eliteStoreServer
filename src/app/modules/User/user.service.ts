@@ -152,7 +152,15 @@ const getAccountByEmail = async (email: string) => {
 };
 
 // Make admin
-const makeAdmin = async (publicId: string) => {
+const makeAdmin = async (publicId: string, email: string) => {
+  const updater = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+  // console.log(updater);
+  if (!updater) {
+    throw new AppError(httpStatus.NOT_FOUND, "Your account was not found");
+  }
+
   const user = await prisma.user.findUnique({
     where: { publicId, isActive: true },
   });
@@ -163,7 +171,7 @@ const makeAdmin = async (publicId: string) => {
 
   const updated = await prisma.user.update({
     where: { publicId },
-    data: { role: Role.ADMIN },
+    data: { role: Role.ADMIN, roleUpdatedById: updater?.id ?? null },
     select: { publicId: true, email: true, role: true },
   });
 

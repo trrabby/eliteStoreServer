@@ -2,17 +2,38 @@ import httpStatus from "http-status";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { categoryService } from "./category.service";
+import { uploadToCloudinary } from "../../utils/uploadToCloudinary";
 
 const createCategory = catchAsync(async (req, res) => {
   const files = req.files as
     | { [fieldname: string]: Express.Multer.File[] }
     | undefined;
-  const image = files?.["image"]
-    ? (files["image"][0].path as string)
-    : undefined;
-  const icon = files?.["icon"] ? (files["icon"][0].path as string) : undefined;
+
+  let image: string | undefined;
+  let icon: string | undefined;
+
+  // Upload image
+  if (files?.image?.[0]) {
+    const result: any = await uploadToCloudinary(
+      files.image[0].buffer,
+      "categories",
+    );
+    image = result.secure_url;
+  }
+
+  // Upload icon
+  if (files?.icon?.[0]) {
+    const result: any = await uploadToCloudinary(
+      files.icon[0].buffer,
+      "categories",
+    );
+    icon = result.secure_url;
+  }
+
   const data = JSON.parse(req.body.data);
+
   const result = await categoryService.createCategory(data, image, icon);
+
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
     success: true,
@@ -73,15 +94,41 @@ const getCategoryById = catchAsync(async (req, res) => {
 
 const updateCategory = catchAsync(async (req, res) => {
   const id = Number(req.params.id);
+
   const files = req.files as
     | { [fieldname: string]: Express.Multer.File[] }
     | undefined;
-  const image = files?.["image"]
-    ? (files["image"][0].path as string)
-    : undefined;
-  const icon = files?.["icon"] ? (files["icon"][0].path as string) : undefined;
+
+  let image: string | undefined;
+  let icon: string | undefined;
+
+  // Upload image only if new file আসে
+  if (files?.image?.[0]) {
+    const result: any = await uploadToCloudinary(
+      files.image[0].buffer,
+      "categories",
+    );
+    image = result.secure_url;
+  }
+
+  // Upload icon only if new file আসে
+  if (files?.icon?.[0]) {
+    const result: any = await uploadToCloudinary(
+      files.icon[0].buffer,
+      "categories",
+    );
+    icon = result.secure_url;
+  }
+
   const data = JSON.parse(req.body.data);
-  const result = await categoryService.updateCategory(id, data, image, icon);
+
+  const result = await categoryService.updateCategory(
+    id,
+    data,
+    image, // may be undefined
+    icon, // may be undefined
+  );
+
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

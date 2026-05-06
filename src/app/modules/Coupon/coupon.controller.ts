@@ -4,8 +4,10 @@ import sendResponse from "../../../shared/sendResponse";
 import { couponService } from "./coupon.service";
 
 const createCoupon = catchAsync(async (req, res) => {
-  const data   = JSON.parse(req.body.data);
-  const result = await couponService.createCoupon(data);
+  const user = req.user as { email: string };
+  // console.log(user);
+  const data = JSON.parse(req.body.data);
+  const result = await couponService.createCoupon(data, user.email);
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
     success: true,
@@ -17,11 +19,11 @@ const createCoupon = catchAsync(async (req, res) => {
 const getAllCoupons = catchAsync(async (req, res) => {
   const { page, limit, isActive, search, isExpired } = req.query;
   const result = await couponService.getAllCoupons({
-    page:      page      ? Number(page)              : undefined,
-    limit:     limit     ? Number(limit)             : undefined,
-    isActive:  isActive  ? isActive  === "true"      : undefined,
-    isExpired: isExpired ? isExpired === "true"      : undefined,
-    search:    search    ? String(search)            : undefined,
+    page: page ? Number(page) : undefined,
+    limit: limit ? Number(limit) : undefined,
+    isActive: isActive ? isActive === "true" : undefined,
+    isExpired: isExpired ? isExpired === "true" : undefined,
+    search: search ? String(search) : undefined,
   });
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -32,7 +34,7 @@ const getAllCoupons = catchAsync(async (req, res) => {
 });
 
 const getCouponById = catchAsync(async (req, res) => {
-  const id     = Number(req.params.id);
+  const id = Number(req.params.id);
   const result = await couponService.getCouponById(id);
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -44,11 +46,11 @@ const getCouponById = catchAsync(async (req, res) => {
 
 const applyCoupon = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
-  const data      = JSON.parse(req.body.data);
-  const result    = await couponService.applyCoupon(
+  const data = JSON.parse(req.body.data);
+  const result = await couponService.applyCoupon(
     email,
     data.code,
-    data.orderAmount
+    data.orderAmount,
   );
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -59,8 +61,8 @@ const applyCoupon = catchAsync(async (req, res) => {
 });
 
 const updateCoupon = catchAsync(async (req, res) => {
-  const id     = Number(req.params.id);
-  const data   = JSON.parse(req.body.data);
+  const id = Number(req.params.id);
+  const data = JSON.parse(req.body.data);
   const result = await couponService.updateCoupon(id, data);
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -71,7 +73,7 @@ const updateCoupon = catchAsync(async (req, res) => {
 });
 
 const toggleCouponStatus = catchAsync(async (req, res) => {
-  const id     = Number(req.params.id);
+  const id = Number(req.params.id);
   const result = await couponService.toggleCouponStatus(id);
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -94,7 +96,7 @@ const deleteCoupon = catchAsync(async (req, res) => {
 
 const getMyCouponHistory = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
-  const result    = await couponService.getMyCouponHistory(email);
+  const result = await couponService.getMyCouponHistory(email);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

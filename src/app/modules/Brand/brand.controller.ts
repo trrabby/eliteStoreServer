@@ -2,15 +2,38 @@ import httpStatus from "http-status";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { brandService } from "./brand.service";
+import { uploadToCloudinary } from "../../utils/uploadToCloudinary";
 
 const createBrand = catchAsync(async (req, res) => {
   const files = req.files as
     | { [fieldname: string]: Express.Multer.File[] }
     | undefined;
-  const logo = files?.["logo"] ? files["logo"][0].path : undefined;
-  const banner = files?.["banner"] ? files["banner"][0].path : undefined;
+
+  let logo: string | undefined;
+  let banner: string | undefined;
+
+  // Handle logo
+  if (files?.logo?.[0]) {
+    const result: any = await uploadToCloudinary(
+      files.logo[0].buffer,
+      "brands",
+    );
+    logo = result.secure_url;
+  }
+
+  // Handle banner
+  if (files?.banner?.[0]) {
+    const result: any = await uploadToCloudinary(
+      files.banner[0].buffer,
+      "brands",
+    );
+    banner = result.secure_url;
+  }
+
   const data = JSON.parse(req.body.data);
+
   const result = await brandService.createBrand(data, logo, banner);
+
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
     success: true,
@@ -71,13 +94,41 @@ const getBrandById = catchAsync(async (req, res) => {
 
 const updateBrand = catchAsync(async (req, res) => {
   const id = Number(req.params.id);
+
   const files = req.files as
     | { [fieldname: string]: Express.Multer.File[] }
     | undefined;
-  const logo = files?.["logo"] ? files["logo"][0].path : undefined;
-  const banner = files?.["banner"] ? files["banner"][0].path : undefined;
+
+  let logo: string | undefined;
+  let banner: string | undefined;
+
+  // Upload logo only if নতুন file আসে
+  if (files?.logo?.[0]) {
+    const result: any = await uploadToCloudinary(
+      files.logo[0].buffer,
+      "brands",
+    );
+    logo = result.secure_url;
+  }
+
+  // Upload banner only if নতুন file আসে
+  if (files?.banner?.[0]) {
+    const result: any = await uploadToCloudinary(
+      files.banner[0].buffer,
+      "brands",
+    );
+    banner = result.secure_url;
+  }
+
   const data = JSON.parse(req.body.data);
-  const result = await brandService.updateBrand(id, data, logo, banner);
+
+  const result = await brandService.updateBrand(
+    id,
+    data,
+    logo, // may be undefined → service must handle
+    banner, // may be undefined → service must handle
+  );
+
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

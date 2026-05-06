@@ -8,9 +8,9 @@ import AppError from "../../errors/AppError";
 
 // core coupon validation logic — reused in applyCoupon and order creation
 export const validateCouponForUser = async (
-  code:        string,
-  userId:      number,
-  orderAmount: number
+  code: string,
+  userId: number,
+  orderAmount: number,
 ) => {
   const coupon = await prisma.coupon.findUnique({
     where: { code: code.toUpperCase() },
@@ -27,10 +27,7 @@ export const validateCouponForUser = async (
   const now = new Date();
 
   if (now < coupon.startsAt) {
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      "This coupon is not active yet"
-    );
+    throw new AppError(httpStatus.BAD_REQUEST, "This coupon is not active yet");
   }
 
   if (now > coupon.expiresAt) {
@@ -41,7 +38,7 @@ export const validateCouponForUser = async (
   if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      "This coupon has reached its usage limit"
+      "This coupon has reached its usage limit",
     );
   }
 
@@ -53,7 +50,7 @@ export const validateCouponForUser = async (
   if (userUsageCount >= coupon.perUserLimit) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      "You have already used this coupon the maximum number of times"
+      "You have already used this coupon the maximum number of times",
     );
   }
 
@@ -64,7 +61,7 @@ export const validateCouponForUser = async (
   ) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      `Minimum order amount of ${coupon.minOrderAmount} is required for this coupon`
+      `Minimum order amount of ${coupon.minOrderAmount} is required for this coupon`,
     );
   }
 
@@ -94,7 +91,7 @@ export const validateCouponForUser = async (
   return {
     coupon,
     discountAmount: parseFloat(discountAmount.toFixed(2)),
-    finalAmount:    parseFloat((orderAmount - discountAmount).toFixed(2)),
+    finalAmount: parseFloat((orderAmount - discountAmount).toFixed(2)),
   };
 };
 
@@ -103,45 +100,49 @@ export const validateCouponForUser = async (
 // ─────────────────────────────────────────
 
 // create coupon — admin only
-const createCoupon = async (payload: {
-  code:            string;
-  description?:    string;
-  discountType:    "PERCENTAGE" | "FLAT";
-  discountValue:   number;
-  minOrderAmount?: number;
-  maxDiscount?:    number;
-  usageLimit?:     number;
-  perUserLimit?:   number;
-  isActive?:       boolean;
-  startsAt:        string;
-  expiresAt:       string;
-}) => {
+const createCoupon = async (
+  payload: {
+    code: string;
+    description?: string;
+    discountType: "PERCENTAGE" | "FLAT";
+    discountValue: number;
+    minOrderAmount?: number;
+    maxDiscount?: number;
+    usageLimit?: number;
+    perUserLimit?: number;
+    isActive?: boolean;
+    startsAt: string;
+    expiresAt: string;
+  },
+  email?: string,
+) => {
   const code = payload.code.toUpperCase();
-
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+  // console.log(user);
   const existing = await prisma.coupon.findUnique({
     where: { code },
   });
 
   if (existing) {
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      "Coupon code already exists"
-    );
+    throw new AppError(httpStatus.BAD_REQUEST, "Coupon code already exists");
   }
 
   const coupon = await prisma.coupon.create({
     data: {
       code,
-      description:    payload.description    ?? null,
-      discountType:   payload.discountType,
-      discountValue:  payload.discountValue,
+      description: payload.description ?? null,
+      discountType: payload.discountType,
+      discountValue: payload.discountValue,
       minOrderAmount: payload.minOrderAmount ?? null,
-      maxDiscount:    payload.maxDiscount    ?? null,
-      usageLimit:     payload.usageLimit     ?? null,
-      perUserLimit:   payload.perUserLimit   ?? 1,
-      isActive:       payload.isActive       ?? true,
-      startsAt:       new Date(payload.startsAt),
-      expiresAt:      new Date(payload.expiresAt),
+      maxDiscount: payload.maxDiscount ?? null,
+      usageLimit: payload.usageLimit ?? null,
+      perUserLimit: payload.perUserLimit ?? 1,
+      isActive: payload.isActive ?? true,
+      startsAt: new Date(payload.startsAt),
+      expiresAt: new Date(payload.expiresAt),
+      createdById: user?.id ? Number(user.id) : null,
     },
   });
 
@@ -150,15 +151,15 @@ const createCoupon = async (payload: {
 
 // get all coupons — admin
 const getAllCoupons = async (query: {
-  page?:       number;
-  limit?:      number;
-  isActive?:   boolean;
-  search?:     string;
-  isExpired?:  boolean;
+  page?: number;
+  limit?: number;
+  isActive?: boolean;
+  search?: string;
+  isExpired?: boolean;
 }) => {
-  const page  = query.page  ?? 1;
+  const page = query.page ?? 1;
   const limit = query.limit ?? 20;
-  const skip  = (page - 1) * limit;
+  const skip = (page - 1) * limit;
 
   const where: any = {};
 
@@ -166,13 +167,13 @@ const getAllCoupons = async (query: {
 
   if (query.isExpired !== undefined) {
     where.expiresAt = query.isExpired
-      ? { lt: new Date() }    // expired
-      : { gt: new Date() };   // not expired
+      ? { lt: new Date() } // expired
+      : { gt: new Date() }; // not expired
   }
 
   if (query.search) {
     where.OR = [
-      { code:        { contains: query.search, mode: "insensitive" } },
+      { code: { contains: query.search, mode: "insensitive" } },
       { description: { contains: query.search, mode: "insensitive" } },
     ];
   }
@@ -181,7 +182,7 @@ const getAllCoupons = async (query: {
     prisma.coupon.findMany({
       where,
       skip,
-      take:    limit,
+      take: limit,
       orderBy: { createdAt: "desc" },
       include: {
         _count: {
@@ -201,12 +202,12 @@ const getCouponById = async (id: number) => {
     where: { id },
     include: {
       usages: {
-        take:    10,
+        take: 10,
         orderBy: { usedAt: "desc" },
         include: {
           user: {
             select: {
-              email:       true,
+              email: true,
               accountInfo: {
                 select: { firstName: true, lastName: true },
               },
@@ -230,9 +231,9 @@ const getCouponById = async (id: number) => {
 // apply coupon — customer, validates and returns discount info
 // does NOT record usage — that happens at order creation
 const applyCoupon = async (
-  email:       string,
-  code:        string,
-  orderAmount: number
+  email: string,
+  code: string,
+  orderAmount: number,
 ) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
@@ -245,11 +246,11 @@ const applyCoupon = async (
   const result = await validateCouponForUser(code, user.id, orderAmount);
 
   return {
-    code:           result.coupon.code,
-    discountType:   result.coupon.discountType,
-    discountValue:  result.coupon.discountValue,
+    code: result.coupon.code,
+    discountType: result.coupon.discountType,
+    discountValue: result.coupon.discountValue,
     discountAmount: result.discountAmount,
-    finalAmount:    result.finalAmount,
+    finalAmount: result.finalAmount,
   };
 };
 
@@ -257,17 +258,17 @@ const applyCoupon = async (
 const updateCoupon = async (
   id: number,
   payload: {
-    description?:    string;
-    discountType?:   "PERCENTAGE" | "FLAT";
-    discountValue?:  number;
+    description?: string;
+    discountType?: "PERCENTAGE" | "FLAT";
+    discountValue?: number;
     minOrderAmount?: number | null;
-    maxDiscount?:    number | null;
-    usageLimit?:     number | null;
-    perUserLimit?:   number;
-    isActive?:       boolean;
-    startsAt?:       string;
-    expiresAt?:      string;
-  }
+    maxDiscount?: number | null;
+    usageLimit?: number | null;
+    perUserLimit?: number;
+    isActive?: boolean;
+    startsAt?: string;
+    expiresAt?: string;
+  },
 ) => {
   const coupon = await prisma.coupon.findUnique({ where: { id } });
 
@@ -279,7 +280,7 @@ const updateCoupon = async (
     where: { id },
     data: {
       ...payload,
-      ...(payload.startsAt  && { startsAt:  new Date(payload.startsAt) }),
+      ...(payload.startsAt && { startsAt: new Date(payload.startsAt) }),
       ...(payload.expiresAt && { expiresAt: new Date(payload.expiresAt) }),
     },
   });
@@ -297,10 +298,10 @@ const toggleCouponStatus = async (id: number) => {
 
   const updated = await prisma.coupon.update({
     where: { id },
-    data:  { isActive: !coupon.isActive },
+    data: { isActive: !coupon.isActive },
     select: {
-      id:       true,
-      code:     true,
+      id: true,
+      code: true,
       isActive: true,
     },
   });
@@ -325,7 +326,7 @@ const deleteCoupon = async (id: number) => {
   if (coupon._count.orders > 0) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      `Cannot delete — this coupon has been used in ${coupon._count.orders} orders. Deactivate it instead.`
+      `Cannot delete — this coupon has been used in ${coupon._count.orders} orders. Deactivate it instead.`,
     );
   }
 
@@ -345,13 +346,13 @@ const getMyCouponHistory = async (email: string) => {
   }
 
   const usages = await prisma.couponUsage.findMany({
-    where:   { userId: user.id },
+    where: { userId: user.id },
     orderBy: { usedAt: "desc" },
     include: {
       coupon: {
         select: {
-          code:          true,
-          discountType:  true,
+          code: true,
+          discountType: true,
           discountValue: true,
         },
       },

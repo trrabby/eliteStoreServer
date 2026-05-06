@@ -37,8 +37,9 @@ const getMyProfile = catchAsync(async (req, res) => {
 });
 
 const makeAdmin = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const { publicId } = req.params;
-  const result = await userService.makeAdmin(publicId as string);
+  const result = await userService.makeAdmin(publicId as string, email);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
