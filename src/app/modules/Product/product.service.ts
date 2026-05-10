@@ -495,7 +495,7 @@ const verifyProductOwnership = async (productId: number, email: string) => {
   if (isAdmin) return;
 
   const product = await prisma.product.findUnique({ where: { id: productId } });
-
+  // console.log(productId, product?.vendorId, user.vendorProfile?.id);
   if (product?.vendorId !== user.vendorProfile?.id) {
     throw new AppError(
       httpStatus.FORBIDDEN,
@@ -647,7 +647,7 @@ const createVariant = async (
   },
 ) => {
   await verifyProductOwnership(productId, email);
-
+  // console.log(productId, email);
   // check sku uniqueness
   const skuExists = await prisma.productVariant.findUnique({
     where: { sku: payload.sku },

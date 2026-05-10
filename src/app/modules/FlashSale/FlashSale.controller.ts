@@ -68,9 +68,9 @@ const getActiveFlashSale = catchAsync(async (req, res) => {
   });
 });
 
-const getFlashSaleById = catchAsync(async (req, res) => {
-  const { publicId } = req.params;
-  const result = await flashSaleService.getFlashSaleById(publicId);
+const getFlashSaleBySlug = catchAsync(async (req, res) => {
+  const { slug } = req.params;
+  const result = await flashSaleService.getFlashSaleBySlug(slug);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -165,6 +165,19 @@ const removeItem = catchAsync(async (req, res) => {
   });
 });
 
+const removeItems = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
+  console.log(req.body);
+  const { itemPublicIds } = JSON.parse(req.body.data);
+  await flashSaleService.removeItems(itemPublicIds, email);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Items removed from flash sale",
+    data: null,
+  });
+});
+
 const activateFlashSale = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
   const { publicId } = req.params;
@@ -225,12 +238,13 @@ export const FlashSaleController = {
   createFlashSale,
   getAllFlashSales,
   getActiveFlashSale,
-  getFlashSaleById,
+  getFlashSaleBySlug,
   getMyFlashSales,
   updateFlashSale,
   addItems,
   updateItem,
   removeItem,
+  removeItems,
   activateFlashSale,
   cancelFlashSale,
   endExpiredSales,

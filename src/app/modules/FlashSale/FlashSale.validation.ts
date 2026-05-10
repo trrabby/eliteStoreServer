@@ -61,6 +61,14 @@ const updateItem = z.object({
   }),
 });
 
+const removebulkItems = z.object({
+  body: z.object({
+    itemPublicIds: z
+      .array(z.string())
+      .min(1, "At least one itemPublicId is required"),
+  }),
+});
+
 const activateSale = z.object({
   body: z.object({
     confirm: z.literal(true, {
@@ -74,5 +82,6 @@ export const flashSaleValidation = {
   updateFlashSale,
   addItems,
   updateItem,
+  removebulkItems,
   activateSale,
 };

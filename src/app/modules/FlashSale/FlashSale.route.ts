@@ -19,7 +19,7 @@ router.get("/active", FlashSaleController.getActiveFlashSale);
 router.get("/", FlashSaleController.getAllFlashSales);
 
 // single sale by slug
-router.get("/:slug", FlashSaleController.getFlashSaleById);
+router.get("/:slug", FlashSaleController.getFlashSaleBySlug);
 
 // ─────────────────────────────────────────
 // VENDOR + ADMIN
@@ -43,7 +43,7 @@ router.post(
 
 // update flash sale (DRAFT only)
 router.patch(
-  "/:publicId",
+  "/update-draft/:publicId",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.fields([{ name: "banner", maxCount: 1 }]),
   validateRequestFormdataOptionalPhoto(flashSaleValidation.updateFlashSale),
@@ -61,7 +61,7 @@ router.post(
 
 // update single item
 router.patch(
-  "/:publicId/items/:itemPublicId",
+  "/update-item/:itemPublicId",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdataOptionalPhoto(flashSaleValidation.updateItem),
@@ -70,9 +70,17 @@ router.patch(
 
 // remove single item
 router.delete(
-  "/:publicId/items/:itemPublicId",
+  "/delete-item/:itemPublicId",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   FlashSaleController.removeItem,
+);
+
+// remove multiple items
+router.delete(
+  "/removeBulkItems",
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
+  // validateRequestFormdataOptionalPhoto(flashSaleValidation.removebulkItems),
+  FlashSaleController.removeItems,
 );
 
 // activate — DRAFT → ACTIVE
@@ -93,7 +101,7 @@ router.patch(
 
 // delete — DRAFT only
 router.delete(
-  "/:publicId",
+  "/delete-draft/:publicId",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   FlashSaleController.deleteFlashSale,
 );

@@ -215,9 +215,9 @@ const getActiveFlashSale = async () => {
 };
 
 // get flash sale by publicId
-const getFlashSaleById = async (publicId: string) => {
+const getFlashSaleBySlug = async (slug: string) => {
   const sale = await prisma.flashSale.findUnique({
-    where: { publicId },
+    where: { slug },
     include: {
       vendor: {
         select: { storeName: true, slug: true, logo: true },
@@ -482,10 +482,17 @@ const addItems = async (
         where: { productId: item.productId },
       });
 
+      const existingFlashSaleName = existingOffer
+        ? await prisma.flashSale.findUnique({
+            where: { id: existingOffer.flashSaleId },
+            select: { title: true, slug: true },
+          })
+        : null;
+
       if (existingOffer) {
         results.skipped.push({
           productId: item.productId,
-          reason: "Product is already part of another flash sale offer",
+          reason: `Product is already part of ${existingFlashSaleName?.title}, visit: /flash-sales/${existingFlashSaleName?.slug} flash sale offer`,
         });
         continue;
       }
@@ -497,7 +504,25 @@ const addItems = async (
         item.discountValue,
         item.maxDiscount,
       );
+      // check stock if provided, must be positive and less than or equal to stock including all variant's stock togather
+      let totalStock = 0;
 
+      // find all product variants and sum their stock to get total available stock for the product
+      const variants = await prisma.productVariant.findMany({
+        where: { productId: item.productId, isActive: true },
+        select: { stock: true },
+      });
+      totalStock = variants.reduce((sum, v) => sum + v.stock, 0);
+
+      if (item.stock !== undefined && item.stock !== null) {
+        if (item.stock < 0 || item.stock > totalStock) {
+          results.skipped.push({
+            productId: item.productId,
+            reason: `Invalid stock value. Must be between 0 and ${totalStock}. You have only ${totalStock} items in stock for this product including all variants.`,
+          });
+          continue;
+        }
+      }
       const created = await prisma.flashSaleItem.create({
         data: {
           flashSaleId: sale.id,
@@ -507,8 +532,9 @@ const addItems = async (
           maxDiscount: item.maxDiscount ?? null,
           originalPrice,
           salePrice,
-          stock: item.stock ?? null,
+          stock: item.stock ?? totalStock,
           isActive: true,
+          addedById: user?.id,
         },
       });
 
@@ -542,39 +568,136 @@ const updateItem = async (
 ) => {
   const item = await prisma.flashSaleItem.findUnique({
     where: { publicId: itemPublicId },
-    include: { flashSale: true },
+    include: {
+      flashSale: true,
+      product: {
+        include: {
+          variants: {
+            where: { isDefault: true, isActive: true },
+            take: 1,
+          },
+        },
+      },
+    },
   });
 
   if (!item) {
     throw new AppError(httpStatus.NOT_FOUND, "Flash sale item not found");
   }
 
+  // prevent updating ended/cancelled sales
+  if (
+    item.flashSale.status === "ENDED" ||
+    item.flashSale.status === "CANCELLED"
+  ) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Cannot update products of an ended or cancelled sale",
+    );
+  }
+
   await verifyFlashSaleOwnership(item.flashSale.publicId, email);
 
-  // recompute sale price if discount changed
+  // check product active status
+  if (!item.product || item.product.status !== "ACTIVE") {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Product not found or not active",
+    );
+  }
+
+  // check default variant
+  if (item.product.variants.length === 0) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Product has no active default variant",
+    );
+  }
+
+  // calculate total stock from all active variants
+  const variants = await prisma.productVariant.findMany({
+    where: {
+      productId: item.productId,
+      isActive: true,
+    },
+    select: {
+      stock: true,
+    },
+  });
+
+  const totalStock = variants.reduce((sum, v) => sum + v.stock, 0);
+
+  // validate stock
+  if (payload.stock !== undefined && payload.stock !== null) {
+    if (payload.stock < 0 || payload.stock > totalStock) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        `Invalid stock value. Must be between 0 and ${totalStock}. You have only ${totalStock} items in stock for this product including all variants.`,
+      );
+    }
+  }
+
+  // recompute sale price if any pricing field changes
   let salePrice: number | undefined;
-  if (payload.discountType || payload.discountValue) {
+
+  const finalDiscountType = payload.discountType ?? (item.discountType as any);
+
+  const finalDiscountValue =
+    payload.discountValue ?? Number(item.discountValue);
+
+  const finalMaxDiscount =
+    payload.maxDiscount !== undefined
+      ? payload.maxDiscount
+      : item.maxDiscount
+        ? Number(item.maxDiscount)
+        : null;
+
+  if (
+    payload.discountType !== undefined ||
+    payload.discountValue !== undefined ||
+    payload.maxDiscount !== undefined
+  ) {
     salePrice = computeSalePrice(
       Number(item.originalPrice),
-      (payload.discountType ?? item.discountType) as any,
-      payload.discountValue ?? Number(item.discountValue),
-      payload.maxDiscount ??
-        (item.maxDiscount ? Number(item.maxDiscount) : null),
+      finalDiscountType,
+      finalDiscountValue,
+      finalMaxDiscount,
     );
   }
 
   const updated = await prisma.flashSaleItem.update({
     where: { publicId: itemPublicId },
     data: {
-      ...payload,
-      ...(salePrice !== undefined && { salePrice }),
+      ...(payload.discountType !== undefined && {
+        discountType: payload.discountType,
+      }),
+
+      ...(payload.discountValue !== undefined && {
+        discountValue: payload.discountValue,
+      }),
+
+      ...(payload.maxDiscount !== undefined && {
+        maxDiscount: payload.maxDiscount,
+      }),
+
+      ...(payload.stock !== undefined && {
+        stock: payload.stock ?? totalStock,
+      }),
+
+      ...(payload.isActive !== undefined && {
+        isActive: payload.isActive,
+      }),
+
+      ...(salePrice !== undefined && {
+        salePrice,
+      }),
     },
   });
 
   return updated;
 };
 
-// remove product from flash sale
+// remove single product from flash sale
 const removeItem = async (itemPublicId: string, email: string) => {
   const item = await prisma.flashSaleItem.findUnique({
     where: { publicId: itemPublicId },
@@ -597,6 +720,34 @@ const removeItem = async (itemPublicId: string, email: string) => {
   await prisma.flashSaleItem.delete({ where: { publicId: itemPublicId } });
 
   return "Item removed from flash sale";
+};
+
+// remove bulk products from flash sale
+const removeItems = async (itemPublicIds: string[], email: string) => {
+  const items = await prisma.flashSaleItem.findMany({
+    where: { publicId: { in: itemPublicIds } },
+    include: { flashSale: true },
+  });
+
+  if (items.length === 0) {
+    throw new AppError(httpStatus.NOT_FOUND, "No flash sale items found");
+  }
+
+  const sale = items[0].flashSale;
+  if (sale.status === "ACTIVE") {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Cannot remove products from an active sale. Deactivate the items instead.",
+    );
+  }
+
+  await verifyFlashSaleOwnership(sale.publicId, email);
+
+  await prisma.flashSaleItem.deleteMany({
+    where: { publicId: { in: itemPublicIds } },
+  });
+
+  return "Items removed from flash sale";
 };
 
 // ─────────────────────────────────────────
@@ -764,12 +915,13 @@ export const flashSaleService = {
   createFlashSale,
   getAllFlashSales,
   getActiveFlashSale,
-  getFlashSaleById,
+  getFlashSaleBySlug,
   getMyFlashSales,
   updateFlashSale,
   addItems,
   updateItem,
   removeItem,
+  removeItems,
   activateFlashSale,
   cancelFlashSale,
   endExpiredSales,
