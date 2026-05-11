@@ -79,7 +79,8 @@ router.delete(
 router.delete(
   "/removeBulkItems",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
-  // validateRequestFormdataOptionalPhoto(flashSaleValidation.removebulkItems),
+  multerUpload.none(),
+  validateRequestFormdataOptionalPhoto(flashSaleValidation.removebulkItems),
   FlashSaleController.removeItems,
 );
 

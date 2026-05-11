@@ -103,9 +103,10 @@ const cancelOrder = catchAsync(async (req, res) => {
 });
 
 const updateOrderStatus = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const orderId = Number(req.params.id);
   const data = JSON.parse(req.body.data);
-  const result = await orderService.updateOrderStatus(orderId, data);
+  const result = await orderService.updateOrderStatus(email, orderId, data);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -115,9 +116,9 @@ const updateOrderStatus = catchAsync(async (req, res) => {
 });
 
 const updateOrderStatusBulk = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const data = JSON.parse(req.body.data);
-
-  const result = await orderService.updateOrderStatusBulk(data);
+  const result = await orderService.updateOrderStatusBulk(email, data);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,

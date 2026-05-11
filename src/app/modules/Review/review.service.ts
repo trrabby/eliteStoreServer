@@ -423,8 +423,17 @@ const deleteReview = async (id: number, email: string) => {
 // moderate review — admin
 const moderateReview = async (
   id: number,
+  email: string,
   payload: { status: string; note?: string },
 ) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
   const review = await prisma.review.findUnique({ where: { id } });
 
   if (!review) {
@@ -434,7 +443,7 @@ const moderateReview = async (
   const updated = await prisma.$transaction(async (tx) => {
     const updatedReview = await tx.review.update({
       where: { id },
-      data: { status: payload.status as any },
+      data: { status: payload.status as any, statusUpdatedById: user.id },
     });
 
     // sync rating whenever status changes

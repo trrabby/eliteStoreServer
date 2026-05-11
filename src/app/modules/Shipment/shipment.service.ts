@@ -14,13 +14,22 @@ import {
 // ─────────────────────────────────────────
 
 // create manual shipment — admin
-const createShipment = async (payload: {
-  orderId: number;
-  carrier: string;
-  trackingNumber: string;
-  trackingUrl?: string;
-  estimatedAt?: string;
-}) => {
+const createShipment = async (
+  email: string,
+  payload: {
+    orderId: number;
+    carrier: string;
+    trackingNumber: string;
+    trackingUrl?: string;
+    estimatedAt?: string;
+  },
+) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
   const order = await prisma.order.findUnique({
     where: { id: payload.orderId },
     include: { shipment: true, payment: true },
@@ -79,6 +88,7 @@ const createShipment = async (payload: {
         carrier: payload.carrier,
         trackingNumber: payload.trackingNumber,
         trackingUrl: payload.trackingUrl ?? null,
+        createdById: user.id,
         estimatedAt: payload.estimatedAt ? new Date(payload.estimatedAt) : null,
         shippedAt: new Date(),
       },
@@ -86,13 +96,14 @@ const createShipment = async (payload: {
 
     await tx.order.update({
       where: { id: payload.orderId },
-      data: { status: "SHIPPED" },
+      data: { status: "SHIPPED", statusUpdatedById: user.id },
     });
 
     await tx.orderStatusHistory.create({
       data: {
         orderId: payload.orderId,
         status: "SHIPPED",
+        statusUpdatedById: user.id,
         note: `Shipped via ${payload.carrier}. Tracking: ${payload.trackingNumber}`,
       },
     });
@@ -108,7 +119,15 @@ const createShipment = async (payload: {
 // ─────────────────────────────────────────
 
 // send bulk orders to steadfast
-const createSteadfastShipments = async (orderIds: number[]) => {
+const createSteadfastShipments = async (email: string, orderIds: number[]) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
   // fetch all orders with required data
   const orders = await prisma.order.findMany({
     where: {
@@ -199,19 +218,21 @@ const createSteadfastShipments = async (orderIds: number[]) => {
           carrier: "Steadfast",
           trackingNumber: String(item.consignment_id), // ensure string
           trackingUrl: (item as any)?.tracking_link, // ✅ use real link
+          createdById: user.id,
           shippedAt: new Date(),
         },
       });
 
       await tx.order.update({
         where: { id: order.id },
-        data: { status: "SHIPPED" },
+        data: { status: "SHIPPED", statusUpdatedById: user.id },
       });
 
       await tx.orderStatusHistory.create({
         data: {
           orderId: order.id,
           status: "SHIPPED",
+          statusUpdatedById: user.id,
           note: `Consigned to Steadfast. Consignment: ${item.consignment_id}, Tracking: ${item.tracking_code}`,
         },
       });
@@ -391,7 +412,15 @@ const getSteadfastAccountBalance = async () => {
 // ─────────────────────────────────────────
 
 // mark multiple shipments as out for delivery
-const markOutForDelivery = async (shipmentIds: number[]) => {
+const markOutForDelivery = async (email: string, shipmentIds: number[]) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
   const shipments = await prisma.shipment.findMany({
     where: { id: { in: shipmentIds } },
     include: { order: true },
@@ -420,13 +449,14 @@ const markOutForDelivery = async (shipmentIds: number[]) => {
     await prisma.$transaction(async (tx) => {
       await tx.order.update({
         where: { id: shipment.orderId },
-        data: { status: "OUT_FOR_DELIVERY" },
+        data: { status: "OUT_FOR_DELIVERY", statusUpdatedById: user.id },
       });
 
       await tx.orderStatusHistory.create({
         data: {
           orderId: shipment.orderId,
           status: "OUT_FOR_DELIVERY",
+          statusUpdatedById: user.id,
           note: "Package is out for delivery",
         },
       });
@@ -446,7 +476,19 @@ const markOutForDelivery = async (shipmentIds: number[]) => {
 };
 
 // mark multiple shipments as delivered
-const markDelivered = async (shipmentIds: number[], deliveredAt?: string) => {
+const markDelivered = async (
+  email: string,
+  shipmentIds: number[],
+  deliveredAt?: string,
+) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
   const shipments = await prisma.shipment.findMany({
     where: { id: { in: shipmentIds } },
     include: { order: { include: { payment: true } } },
@@ -484,6 +526,7 @@ const markDelivered = async (shipmentIds: number[], deliveredAt?: string) => {
         where: { id: shipment.orderId },
         data: {
           status: "DELIVERED",
+          statusUpdatedById: user.id,
           deliveredAt: deliveryDate,
         },
       });
@@ -492,6 +535,7 @@ const markDelivered = async (shipmentIds: number[], deliveredAt?: string) => {
         data: {
           orderId: shipment.orderId,
           status: "DELIVERED",
+          statusUpdatedById: user.id,
           note: "Package delivered successfully",
         },
       });

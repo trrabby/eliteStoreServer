@@ -88,6 +88,8 @@ const createProduct = async (
 
   // admin can create without vendor profile
   const isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
+  const isVerifiedVendor =
+    user.role === "VENDOR" && user.vendorProfile?.isVerified;
 
   if (!isAdmin && !user.vendorProfile) {
     throw new AppError(
@@ -129,7 +131,10 @@ const createProduct = async (
         slug,
         shortDescription: payload.shortDescription ?? null,
         description: payload.description ?? null,
-        status: (payload.status as any) ?? "DRAFT",
+        status:
+          isAdmin || isVerifiedVendor
+            ? ((payload.status as any) ?? "DRAFT")
+            : "DRAFT",
         isFeatured: payload.isFeatured ?? false,
         tags: payload.tags ?? [],
         metaTitle: payload.metaTitle ?? null,
@@ -148,8 +153,16 @@ const createProduct = async (
 
     return created;
   });
-
-  return product;
+  // if not verified vendor show a message that product is created but unverified vendors need to wait for admin approval to publish
+  let message = {};
+  if (user.role === "VENDOR" && !isVerifiedVendor) {
+    message = {
+      status: httpStatus.CREATED,
+      message:
+        "Product created successfully but is pending for approval. Unverified vendors need to wait for admin approval to publish their products.",
+    };
+  }
+  return { product, ...message };
 };
 
 // get all products — public with filters
@@ -434,6 +447,7 @@ const updateProduct = async (
 ) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
+    include: { vendorProfile: true },
   });
   if (!user) {
     throw new AppError(httpStatus.NOT_FOUND, "User not found");
@@ -442,6 +456,19 @@ const updateProduct = async (
 
   if (!product) {
     throw new AppError(httpStatus.NOT_FOUND, "Product not found");
+  }
+
+  // check whether an admin or verified vendor is trying to change status — only allow if they have admin role
+  if (payload.status && payload.status !== product.status) {
+    const isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
+    const isVerifiedVendor =
+      user.role === "VENDOR" && user.vendorProfile?.isVerified;
+    if (!isAdmin && !isVerifiedVendor) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        "Only admins and verified vendors can change product status",
+      );
+    }
   }
 
   await verifyProductOwnership(id, email);
@@ -900,7 +927,9 @@ const addAttribute = async (
   payload: { name: string; value: string }[], // Array of attributes
 ) => {
   await verifyProductOwnership(productId, email);
-
+  const user = await prisma.user.findUnique({
+    where: { email },
+  });
   // Validate no empty names or values
   for (const attr of payload) {
     if (!attr.name?.trim() || !attr.value?.trim()) {
@@ -917,6 +946,7 @@ const addAttribute = async (
       productId,
       name: attr.name,
       value: attr.value,
+      addedById: user?.id ?? null,
     })),
     skipDuplicates: true, // Optional: skip if same name+value+productId exists
   });

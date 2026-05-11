@@ -818,6 +818,7 @@ const cancelFlashSale = async (publicId: string, email: string) => {
   }
 
   await verifyFlashSaleOwnership(publicId, email);
+  const user = await prisma.user.findUnique({ where: { email } });
 
   await prisma.$transaction(async (tx) => {
     await tx.flashSale.update({
@@ -825,6 +826,7 @@ const cancelFlashSale = async (publicId: string, email: string) => {
       data: {
         status: "CANCELLED",
         isActive: false,
+        statusUpdatedById: user?.id ?? null,
       },
     });
 
@@ -839,7 +841,9 @@ const cancelFlashSale = async (publicId: string, email: string) => {
 };
 
 // auto-end expired sales — called by a cron job or on-demand
-const endExpiredSales = async () => {
+const endExpiredSales = async (email: string) => {
+  const user = await prisma.user.findUnique({ where: { email } });
+
   const expired = await prisma.flashSale.findMany({
     where: {
       isActive: true,
@@ -853,7 +857,11 @@ const endExpiredSales = async () => {
     await prisma.$transaction(async (tx) => {
       await tx.flashSale.update({
         where: { id: sale.id },
-        data: { status: "ENDED", isActive: false },
+        data: {
+          status: "ENDED",
+          isActive: false,
+          statusUpdatedById: user?.id ?? null,
+        },
       });
       await tx.flashSaleItem.updateMany({
         where: { flashSaleId: sale.id },

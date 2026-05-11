@@ -365,6 +365,7 @@ const getReturnRequestById = async (id: number, email: string) => {
 // process return — admin approves or rejects
 const processReturn = async (
   returnRequestId: number,
+  email: string,
   payload: {
     status: "APPROVED" | "REJECTED";
     refundAmount?: number;
@@ -372,6 +373,12 @@ const processReturn = async (
     note?: string;
   },
 ) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+  });
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
   const returnRequest = await prisma.returnRequest.findUnique({
     where: { id: returnRequestId },
     include: {
@@ -404,7 +411,7 @@ const processReturn = async (
     await prisma.$transaction(async (tx) => {
       await tx.returnRequest.update({
         where: { id: returnRequestId },
-        data: { status: "REJECTED" },
+        data: { status: "REJECTED", statusUpdatedById: user.id },
       });
 
       await tx.order.update({
@@ -416,6 +423,7 @@ const processReturn = async (
         data: {
           orderId: returnRequest.orderId,
           status: "DELIVERED",
+          statusUpdatedById: user?.id ?? null,
           note: `Return rejected: ${payload.note ?? "No reason provided"}`,
         },
       });
@@ -448,16 +456,9 @@ const processReturn = async (
       data: {
         status: "APPROVED",
         refundAmount,
+        statusUpdatedById: user.id,
       },
     });
-
-    // 2. update order status CONDITIONALLY
-    // await tx.order.update({
-    //   where: { id: returnRequest.orderId },
-    //   data: {
-    //     status: isFullReturn ? "RETURNED" : "DELIVERED",
-    //   },
-    // });
 
     // check whether all items are returned by more than one return request (edge case)
     const allReturned = await tx.returnRequest.findMany({
@@ -492,6 +493,7 @@ const processReturn = async (
       data: {
         orderId: returnRequest.orderId,
         status: "RETURNED",
+        statusUpdatedById: user?.id ?? null,
         note: isFullReturn
           ? (payload.note ?? "Full order returned")
           : (payload.note ?? "Partial return processed"),

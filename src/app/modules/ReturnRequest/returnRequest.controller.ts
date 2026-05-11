@@ -86,9 +86,10 @@ const getReturnRequestById = catchAsync(async (req, res) => {
 });
 
 const processReturn = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const id = Number(req.params.id);
   const data = JSON.parse(req.body.data);
-  const result = await returnRequestService.processReturn(id, data);
+  const result = await returnRequestService.processReturn(id, email, data);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

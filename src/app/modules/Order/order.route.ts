@@ -72,7 +72,7 @@ router.get(
 
 // update status
 router.patch(
-  "single/:id/status",
+  "/single/:id/status",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(orderValidation.updateOrderStatus),

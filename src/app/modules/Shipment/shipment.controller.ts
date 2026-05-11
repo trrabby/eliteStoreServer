@@ -4,8 +4,9 @@ import sendResponse from "../../../shared/sendResponse";
 import { shipmentService } from "./shipment.service";
 
 const createShipment = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const data = JSON.parse(req.body.data);
-  const result = await shipmentService.createShipment(data);
+  const result = await shipmentService.createShipment(email, data);
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
     success: true,
@@ -18,8 +19,11 @@ const createShipment = catchAsync(async (req, res) => {
 
 const createSteadfastShipments = catchAsync(async (req, res) => {
   const data = JSON.parse(req.body.data);
-
-  const result = await shipmentService.createSteadfastShipments(data.orderIds);
+  const { email } = req.user as { email: string };
+  const result = await shipmentService.createSteadfastShipments(
+    email,
+    data.orderIds,
+  );
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
     success: true,
@@ -52,8 +56,12 @@ const getSteadfastAccountBalance = catchAsync(async (req, res) => {
 // ─── Bulk status updates ──────────────────
 
 const markOutForDelivery = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const data = JSON.parse(req.body.data);
-  const result = await shipmentService.markOutForDelivery(data.shipmentIds);
+  const result = await shipmentService.markOutForDelivery(
+    email,
+    data.shipmentIds,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -63,8 +71,10 @@ const markOutForDelivery = catchAsync(async (req, res) => {
 });
 
 const markDelivered = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const data = JSON.parse(req.body.data);
   const result = await shipmentService.markDelivered(
+    email,
     data.shipmentIds,
     data.deliveredAt,
   );

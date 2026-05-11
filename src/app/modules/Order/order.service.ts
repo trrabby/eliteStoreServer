@@ -567,9 +567,14 @@ const cancelOrder = async (
 
 // update order status — admin
 const updateOrderStatus = async (
+  email: string,
   orderId: number,
   payload: { status: string; note?: string; isPaymentReceived?: boolean },
 ) => {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
@@ -673,6 +678,7 @@ const updateOrderStatus = async (
       where: { id: orderId },
       data: {
         status: payload.status as any,
+        statusUpdatedById: user?.id ?? null,
         ...(payload.status === "DELIVERED" && {
           deliveredAt: new Date(),
         }),
@@ -684,6 +690,7 @@ const updateOrderStatus = async (
       data: {
         orderId,
         status: payload.status as any,
+        statusUpdatedById: user?.id ?? null,
         note: payload.note ?? null,
       },
     });
@@ -695,13 +702,21 @@ const updateOrderStatus = async (
 };
 
 // update order status in bulk — admin
-const updateOrderStatusBulk = async (payload: {
-  orderIds: number[];
-  status: string;
-  note?: string;
-  isPaymentReceived?: boolean;
-}) => {
+const updateOrderStatusBulk = async (
+  email: string,
+  payload: {
+    orderIds: number[];
+    status: string;
+    note?: string;
+    isPaymentReceived?: boolean;
+  },
+) => {
   const { orderIds, status, note, isPaymentReceived } = payload;
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
 
   const orders = await prisma.order.findMany({
     where: { id: { in: orderIds } },
@@ -803,6 +818,7 @@ const updateOrderStatusBulk = async (payload: {
           where: { id: order.id },
           data: {
             status: status as any,
+            statusUpdatedById: user?.id ?? null,
             ...(status === "DELIVERED" && {
               deliveredAt: new Date(),
             }),
@@ -813,6 +829,7 @@ const updateOrderStatusBulk = async (payload: {
           data: {
             orderId: order.id,
             status: status as any,
+            statusUpdatedById: user?.id ?? null,
             note: note ?? null,
           },
         });

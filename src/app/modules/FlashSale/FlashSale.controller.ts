@@ -167,7 +167,7 @@ const removeItem = catchAsync(async (req, res) => {
 
 const removeItems = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
-  console.log(req.body);
+  // console.log(req.body);
   const { itemPublicIds } = JSON.parse(req.body.data);
   await flashSaleService.removeItems(itemPublicIds, email);
   sendResponse(res, {
@@ -203,7 +203,8 @@ const cancelFlashSale = catchAsync(async (req, res) => {
 });
 
 const endExpiredSales = catchAsync(async (req, res) => {
-  const result = await flashSaleService.endExpiredSales();
+  const { email } = req.user as { email: string };
+  const result = await flashSaleService.endExpiredSales(email);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

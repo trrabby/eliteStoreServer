@@ -129,8 +129,9 @@ const deleteReview = catchAsync(async (req, res) => {
 
 const moderateReview = catchAsync(async (req, res) => {
   const id = Number(req.params.id);
+  const email = (req.user as { email: string }).email;
   const data = JSON.parse(req.body.data);
-  const result = await reviewService.moderateReview(id, data);
+  const result = await reviewService.moderateReview(id, email, data);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
