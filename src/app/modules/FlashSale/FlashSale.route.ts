@@ -110,6 +110,12 @@ router.delete(
 // ─────────────────────────────────────────
 // ADMIN ONLY
 // ─────────────────────────────────────────
+// all flash sales
+router.get(
+  "/admin/all",
+  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  FlashSaleController.getAllFlashSales,
+);
 
 router.get(
   "/admin/stats",

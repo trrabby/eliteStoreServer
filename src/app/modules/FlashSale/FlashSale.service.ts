@@ -173,7 +173,7 @@ const getAllFlashSales = async (
 const getActiveFlashSale = async () => {
   const now = new Date();
 
-  const sale = await prisma.flashSale.findFirst({
+  const sale = await prisma.flashSale.findMany({
     where: {
       isActive: true,
       status: "ACTIVE",

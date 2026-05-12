@@ -39,7 +39,7 @@ const getAllFlashSales = catchAsync(async (req, res) => {
   // check if admin role exists on req.user
   const user = req.user as { role?: string } | undefined;
   const adminView = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
-
+  // console.log(adminView, user);
   const result = await flashSaleService.getAllFlashSales(
     {
       page: page ? Number(page) : undefined,
