@@ -12,15 +12,15 @@ import httpStatus from "http-status";
 
 const loginUser = catchAsync(async (req, res) => {
   const result = await AuthService.loginUser(req.body, req); // ← pass req
-  res.cookie("refreshToken", result.refreshToken, {
-    secure: config.env === "production",
-    httpOnly: true,
-  });
+
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: "User logged in successfully!",
-    data: { accessToken: result.accessToken },
+    data: {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    },
   });
 });
 
