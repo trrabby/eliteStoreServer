@@ -27,7 +27,7 @@ router.patch(
 
 // Authenticated users
 router.get(
-  "/profile/:publicId",
+  "/my-profile",
   auth(Role.ADMIN, Role.SUPER_ADMIN, Role.CUSTOMER, Role.VENDOR),
   UserController.getMyProfile,
 );

@@ -26,8 +26,8 @@ const getAllUsers = catchAsync(async (req, res) => {
 });
 
 const getMyProfile = catchAsync(async (req, res) => {
-  const { publicId } = req.params;
-  const result = await userService.getMyProfile(publicId as string);
+  const { email } = req.user as { email: string };
+  const result = await userService.getMyProfile(email as string);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

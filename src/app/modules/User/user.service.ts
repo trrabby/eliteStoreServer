@@ -81,9 +81,9 @@ const getAllUsers = async () => {
 };
 
 // Get profile by publicId
-const getMyProfile = async (publicId: string) => {
+const getMyProfile = async (email: string) => {
   const user = await prisma.user.findUnique({
-    where: { publicId, isActive: true },
+    where: { email, isActive: true },
     select: {
       id: true,
       publicId: true,
@@ -97,6 +97,15 @@ const getMyProfile = async (publicId: string) => {
       accountInfo: true,
       addresses: { where: { isDefault: true } },
       vendorProfile: true,
+      couponsUsed: true,
+      notifications: true,
+      orders: true,
+      returnRequests: true,
+      reviews: true,
+      searchHistory: true,
+      wallet: true,
+      wishlist: true,
+      orderStatusUpdates: true,
     },
   });
 
@@ -118,29 +127,21 @@ const getAccountByEmail = async (email: string) => {
       phone: true,
       role: true,
       isEmailVerified: true,
-      isBanned: true,
+      isPhoneVerified: true,
+      lastLoginAt: true,
       createdAt: true,
       accountInfo: true,
-      orders: {
-        select: {
-          id: true,
-          publicId: true,
-          orderNumber: true,
-          status: true,
-          total: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-      },
-      reviews: {
-        select: {
-          id: true,
-          rating: true,
-          title: true,
-          createdAt: true,
-        },
-      },
+      addresses: { where: { isDefault: true } },
+      vendorProfile: true,
+      couponsUsed: true,
+      notifications: true,
+      orders: true,
+      returnRequests: true,
+      reviews: true,
+      searchHistory: true,
+      wallet: true,
+      wishlist: true,
+      orderStatusUpdates: true,
     },
   });
 
