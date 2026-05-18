@@ -25,30 +25,48 @@ const getAllProducts = catchAsync(async (req, res) => {
     page,
     limit,
     status,
-    brandId,
+    brandIds,
     vendorId,
-    categoryId,
+    categoryIds,
     isFeatured,
     minPrice,
     maxPrice,
     search,
     sortBy,
     tags,
+    minRating,
   } = req.query;
+
+  const normalizeToNumberArray = (value: any): number[] | undefined => {
+    if (!value) return undefined;
+
+    if (Array.isArray(value)) {
+      return value.map(Number).filter(Boolean);
+    }
+
+    // fallback: single value support
+    return [Number(value)].filter(Boolean);
+  };
 
   const result = await productService.getAllProducts({
     page: page ? Number(page) : undefined,
     limit: limit ? Number(limit) : undefined,
-    brandId: brandId ? Number(brandId) : undefined,
+
+    brandIds: normalizeToNumberArray(brandIds),
+    categoryIds: normalizeToNumberArray(categoryIds),
+
     vendorId: vendorId ? Number(vendorId) : undefined,
-    categoryId: categoryId ? Number(categoryId) : undefined,
     minPrice: minPrice ? Number(minPrice) : undefined,
     maxPrice: maxPrice ? Number(maxPrice) : undefined,
+
     isFeatured: isFeatured ? isFeatured === "true" : undefined,
+
     status: status ? String(status) : undefined,
     search: search ? String(search) : undefined,
     sortBy: sortBy ? String(sortBy) : undefined,
+
     tags: tags ? String(tags).split(",") : undefined,
+    minRating: minRating ? Number(minRating) : undefined,
   });
 
   sendResponse(res, {

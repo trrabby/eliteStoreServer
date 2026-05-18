@@ -170,15 +170,16 @@ const getAllProducts = async (query: {
   page?: number;
   limit?: number;
   status?: string;
-  brandId?: number;
+  brandIds?: number[];
   vendorId?: number;
-  categoryId?: number;
+  categoryIds?: number[];
   isFeatured?: boolean;
   minPrice?: number;
   maxPrice?: number;
   search?: string;
   tags?: string[];
-  sortBy?: string; // "price_asc" | "price_desc" | "rating" | "newest" | "popular"
+  sortBy?: string;
+  minRating?: number;
 }) => {
   const page = query.page ?? 1;
   const limit = query.limit ?? 20;
@@ -186,21 +187,41 @@ const getAllProducts = async (query: {
 
   const where: any = {};
 
+  // ─────────────────────────
+  // SIMPLE FILTERS
+  // ─────────────────────────
   if (query.status) where.status = query.status;
-  if (query.brandId) where.brandId = query.brandId;
   if (query.vendorId) where.vendorId = query.vendorId;
   if (query.isFeatured !== undefined) where.isFeatured = query.isFeatured;
 
-  if (query.categoryId) {
+  // ─────────────────────────
+  // BRAND FILTER (MULTI)
+  // ─────────────────────────
+  if (query.brandIds?.length) {
+    where.brandId = { in: query.brandIds };
+  }
+
+  // ─────────────────────────
+  // CATEGORY FILTER (M2M RELATION)
+  // ─────────────────────────
+  if (query.categoryIds?.length) {
     where.categories = {
-      some: { categoryId: query.categoryId },
+      some: {
+        categoryId: { in: query.categoryIds },
+      },
     };
   }
 
+  // ─────────────────────────
+  // TAGS FILTER
+  // ─────────────────────────
   if (query.tags?.length) {
     where.tags = { hasSome: query.tags };
   }
 
+  // ─────────────────────────
+  // SEARCH FILTER
+  // ─────────────────────────
   if (query.search) {
     where.OR = [
       { name: { contains: query.search, mode: "insensitive" } },
@@ -209,7 +230,9 @@ const getAllProducts = async (query: {
     ];
   }
 
-  // price filter on variants
+  // ─────────────────────────
+  // PRICE FILTER
+  // ─────────────────────────
   if (query.minPrice !== undefined || query.maxPrice !== undefined) {
     where.variants = {
       some: {
@@ -222,12 +245,29 @@ const getAllProducts = async (query: {
     };
   }
 
-  // sort
+  if (query.minRating !== undefined) {
+    where.averageRating = {
+      gte: query.minRating,
+    };
+
+    // optional but recommended for data integrity
+    where.reviewCount = {
+      gt: 0,
+    };
+  }
+
+  // ─────────────────────────
+  // SORTING
+  // ─────────────────────────
   let orderBy: any = { createdAt: "desc" };
+
   if (query.sortBy === "rating") orderBy = { averageRating: "desc" };
   if (query.sortBy === "popular") orderBy = { totalSold: "desc" };
   if (query.sortBy === "newest") orderBy = { createdAt: "desc" };
 
+  // ─────────────────────────
+  // QUERY EXECUTION
+  // ─────────────────────────
   const [products, total] = await Promise.all([
     prisma.product.findMany({
       where,
@@ -247,9 +287,11 @@ const getAllProducts = async (query: {
         totalSold: true,
         tags: true,
         createdAt: true,
+
         brand: {
           select: { id: true, name: true, slug: true, logo: true },
         },
+
         categories: {
           select: {
             category: {
@@ -257,11 +299,13 @@ const getAllProducts = async (query: {
             },
           },
         },
+
         images: {
           where: { isPrimary: true },
           take: 1,
           select: { url: true, altText: true },
         },
+
         variants: {
           where: { isDefault: true, isActive: true },
           take: 1,
@@ -269,6 +313,7 @@ const getAllProducts = async (query: {
         },
       },
     }),
+
     prisma.product.count({ where }),
   ]);
 
