@@ -23,7 +23,7 @@ const emailSender = async (email: string, html: string) => {
       html,
     });
 
-    console.log("Email sent:", info.messageId);
+    // console.log("Email sent:", info.messageId);
   } catch (error) {
     console.error("Failed to send email", error);
     throw new Error("Failed to send reset password email");

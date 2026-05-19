@@ -41,29 +41,29 @@ const getCart = async (email: string) => {
       items: {
         include: {
           product: {
-            select: {
-              id:               true,
-              publicId:         true,
-              name:             true,
-              slug:             true,
-              status:           true,
+            include: {
+              flashSaleItem: {
+                include: {
+                  flashSale: true,
+                },
+              },
               images: {
-                where:  { isPrimary: true },
-                take:   1,
+                where: { isPrimary: true },
+                take: 1,
                 select: { url: true, altText: true },
               },
             },
           },
           variant: {
             select: {
-              id:           true,
-              publicId:     true,
-              sku:          true,
-              name:         true,
-              price:        true,
+              id: true,
+              publicId: true,
+              sku: true,
+              name: true,
+              price: true,
               comparePrice: true,
-              stock:        true,
-              isActive:     true,
+              stock: true,
+              isActive: true,
               optionValues: {
                 include: {
                   value: {
@@ -81,39 +81,64 @@ const getCart = async (email: string) => {
     },
   });
 
-  // if no cart yet — return empty
   if (!cart) {
     return {
-      items:      [],
-      itemCount:  0,
-      subtotal:   0,
-      savings:    0,
+      items: [],
+      itemCount: 0,
+      subtotal: 0,
+      savings: 0,
     };
   }
 
-  // calculate totals
   let subtotal = 0;
-  let savings  = 0;
+  let savings = 0;
 
-  for (const item of cart.items) {
-    const price        = Number(item.variant.price);
-    const comparePrice = item.variant.comparePrice
+  const enrichedItems = cart.items.map((item) => {
+    const variantPrice = Number(item.variant.price);
+    const variantComparePrice = item.variant.comparePrice
       ? Number(item.variant.comparePrice)
       : null;
 
-    subtotal += price * item.quantity;
+    const flash = item.product.flashSaleItem;
 
-    if (comparePrice && comparePrice > price) {
-      savings += (comparePrice - price) * item.quantity;
+    // ✅ resolve effective price
+    const effectivePrice = flash?.salePrice
+      ? Number(flash.salePrice)
+      : variantPrice;
+
+    const effectiveComparePrice = flash ? variantPrice : variantComparePrice;
+
+    // totals
+    subtotal += effectivePrice * item.quantity;
+
+    if (effectiveComparePrice && effectiveComparePrice > effectivePrice) {
+      savings += (effectiveComparePrice - effectivePrice) * item.quantity;
     }
-  }
+
+    return {
+      ...item,
+
+      // 🔥 inject resolved pricing (IMPORTANT for frontend consistency)
+      price: effectivePrice,
+      comparePrice: effectiveComparePrice,
+
+      flashOffer: flash
+        ? {
+            salePrice: flash.salePrice,
+            discountType: flash.discountType,
+            discountValue: flash.discountValue,
+            flashSale: flash.flashSale,
+          }
+        : null,
+    };
+  });
 
   return {
-    id:        cart.id,
-    items:     cart.items,
+    id: cart.id,
+    items: enrichedItems,
     itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-    subtotal:  parseFloat(subtotal.toFixed(2)),
-    savings:   parseFloat(savings.toFixed(2)),
+    subtotal: parseFloat(subtotal.toFixed(2)),
+    savings: parseFloat(savings.toFixed(2)),
   };
 };
 
@@ -123,8 +148,8 @@ const addToCart = async (
   payload: {
     productId: number;
     variantId: number;
-    quantity:  number;
-  }
+    quantity: number;
+  },
 ) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
@@ -144,25 +169,22 @@ const addToCart = async (
   }
 
   if (product.status !== "ACTIVE") {
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      "This product is not available"
-    );
+    throw new AppError(httpStatus.BAD_REQUEST, "This product is not available");
   }
 
   // validate variant exists, belongs to product, and is active
   const variant = await prisma.productVariant.findFirst({
     where: {
-      id:        payload.variantId,
+      id: payload.variantId,
       productId: payload.productId,
-      isActive:  true,
+      isActive: true,
     },
   });
 
   if (!variant) {
     throw new AppError(
       httpStatus.NOT_FOUND,
-      "Variant not found or unavailable"
+      "Variant not found or unavailable",
     );
   }
 
@@ -170,7 +192,7 @@ const addToCart = async (
   if (variant.stock < payload.quantity) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      `Insufficient stock. Only ${variant.stock} left.`
+      `Insufficient stock. Only ${variant.stock} left.`,
     );
   }
 
@@ -180,7 +202,7 @@ const addToCart = async (
   const existingItem = await prisma.cartItem.findUnique({
     where: {
       cartId_variantId: {
-        cartId:    cart.id,
+        cartId: cart.id,
         variantId: payload.variantId,
       },
     },
@@ -193,14 +215,14 @@ const addToCart = async (
     if (variant.stock < newQuantity) {
       throw new AppError(
         httpStatus.BAD_REQUEST,
-        `Cannot add more. Only ${variant.stock} in stock and you already have ${existingItem.quantity} in cart.`
+        `Cannot add more. Only ${variant.stock} in stock and you already have ${existingItem.quantity} in cart.`,
       );
     }
 
     const updated = await prisma.cartItem.update({
       where: {
         cartId_variantId: {
-          cartId:    cart.id,
+          cartId: cart.id,
           variantId: payload.variantId,
         },
       },
@@ -213,10 +235,10 @@ const addToCart = async (
   // add new cart item
   const cartItem = await prisma.cartItem.create({
     data: {
-      cartId:    cart.id,
+      cartId: cart.id,
       productId: payload.productId,
       variantId: payload.variantId,
-      quantity:  payload.quantity,
+      quantity: payload.quantity,
     },
   });
 
@@ -225,9 +247,9 @@ const addToCart = async (
 
 // update cart item quantity
 const updateCartItem = async (
-  email:     string,
+  email: string,
   variantId: number,
-  quantity:  number
+  quantity: number,
 ) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
@@ -267,7 +289,7 @@ const updateCartItem = async (
   if (variant.stock < quantity) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      `Insufficient stock. Only ${variant.stock} available.`
+      `Insufficient stock. Only ${variant.stock} available.`,
     );
   }
 
@@ -375,22 +397,18 @@ const validateCart = async (email: string) => {
   for (const item of cart.items) {
     // product no longer active
     if (item.product.status !== "ACTIVE") {
-      issues.push(
-        `"${item.product.name}" is no longer available`
-      );
+      issues.push(`"${item.product.name}" is no longer available`);
     }
 
     // variant no longer active
     if (!item.variant.isActive) {
-      issues.push(
-        `A variant of "${item.product.name}" is no longer available`
-      );
+      issues.push(`A variant of "${item.product.name}" is no longer available`);
     }
 
     // insufficient stock
     if (item.variant.stock < item.quantity) {
       issues.push(
-        `"${item.product.name}" only has ${item.variant.stock} in stock but you have ${item.quantity} in cart`
+        `"${item.product.name}" only has ${item.variant.stock} in stock but you have ${item.quantity} in cart`,
       );
     }
   }
@@ -404,7 +422,7 @@ const validateCart = async (email: string) => {
 
   return {
     isValid: true,
-    issues:  [],
+    issues: [],
   };
 };
 

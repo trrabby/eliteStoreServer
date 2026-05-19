@@ -309,7 +309,19 @@ const getAllProducts = async (query: {
         variants: {
           where: { isDefault: true, isActive: true },
           take: 1,
-          select: { price: true, comparePrice: true, stock: true },
+          select: {
+            id: true, // ← ADD THIS
+            price: true,
+            comparePrice: true,
+            stock: true,
+          },
+        },
+        flashSaleItem: {
+          include: {
+            flashSale: {
+              select: { title: true, endsAt: true, status: true },
+            },
+          },
         },
       },
     }),
@@ -388,6 +400,13 @@ const getProductBySlug = async (slug: string) => {
           },
         },
       },
+      flashSaleItem: {
+        include: {
+          flashSale: {
+            select: { title: true, endsAt: true, status: true },
+          },
+        },
+      },
     },
   });
 
@@ -418,6 +437,13 @@ const getProductById = async (id: number) => {
       variants: {
         include: {
           optionValues: { include: { value: { include: { option: true } } } },
+        },
+      },
+      flashSaleItem: {
+        include: {
+          flashSale: {
+            select: { title: true, endsAt: true, status: true },
+          },
         },
       },
       attributes: true,

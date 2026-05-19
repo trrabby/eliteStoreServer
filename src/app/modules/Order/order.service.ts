@@ -133,8 +133,8 @@ const createOrder = async (
       : 120
     : shippingAddress?.city_district?.toLowerCase() === "dhaka"
       ? 60
-      : 120; // free shipping over 2000 BDT
-  // console.log(billingAddress?.city_district?.toLowerCase());
+      : 120;
+
   const tax = 0; // extend when needed
   const total = subtotal - discount + shippingFee + tax;
 

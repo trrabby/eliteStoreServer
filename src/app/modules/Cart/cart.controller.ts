@@ -16,6 +16,7 @@ const getCart = catchAsync(async (req, res) => {
 
 const addToCart = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
+  console.log(email, JSON.parse(req.body.data));
   const data = JSON.parse(req.body.data);
   const result = await cartService.addToCart(email, data);
   sendResponse(res, {
