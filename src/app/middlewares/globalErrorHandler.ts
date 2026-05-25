@@ -5,11 +5,11 @@ const globalErrorHandler = (
   err: any,
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   res.status(status.INTERNAL_SERVER_ERROR).json({
     success: false,
-    massage: err.message || "something went wrong",
+    message: err.message || "something went wrong",
     error: err,
   });
 };

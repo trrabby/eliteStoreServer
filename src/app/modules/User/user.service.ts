@@ -182,7 +182,7 @@ const makeAdmin = async (publicId: string, email: string) => {
 };
 
 // Update profile
-const updateMyProfile = async (email: string, req: Request) => {
+const updateMyProfile = async (email: string, data: any) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
     include: { accountInfo: true },
@@ -192,11 +192,9 @@ const updateMyProfile = async (email: string, req: Request) => {
   if (!user) {
     throw new AppError(httpStatus.NOT_FOUND, "User not found");
   }
-  const data = JSON.parse(req.body.data);
-  // console.log(data);
   // if image uploaded via multer, req.body.avatar is already the cloudinary url
   const { firstName, lastName, displayName, bio, dateOfBirth, gender } = data;
-  const avatar = req.file?.path;
+  const avatar = data.profileImage;
 
   const updated = await prisma.accountInfo.update({
     where: { userId: user.id },
@@ -461,7 +459,7 @@ const deleteAddress = async (email: string, addressId: number) => {
   if (addressCount === 1) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      "You must have at least one address. Update it instead of deleting.",
+      "You must have at least one address. Update it instead.",
     );
   }
 

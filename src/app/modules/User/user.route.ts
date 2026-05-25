@@ -34,7 +34,7 @@ router.get(
 
 router.get(
   "/by-email/:email",
-  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  // auth(Role.ADMIN, Role.SUPER_ADMIN),
   UserController.getAnAccountByEmail,
 );
 

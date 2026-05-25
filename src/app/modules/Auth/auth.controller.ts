@@ -76,7 +76,10 @@ const loginOrRegisterViaGoogle = catchAsync(async (req, res) => {
     message: result.isNewUser
       ? "Account created and logged in via Google!"
       : "Logged in successfully via Google!",
-    data: { accessToken: result.accessToken },
+    data: {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    },
   });
 });
 
@@ -119,7 +122,10 @@ const loginOrRegisterViaGithub = catchAsync(async (req, res) => {
     message: result.isNewUser
       ? "Account created and logged in via GitHub!"
       : "Logged in successfully via GitHub!",
-    data: { accessToken: result.accessToken },
+    data: {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    },
   });
 });
 

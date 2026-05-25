@@ -71,8 +71,8 @@ const updateMyProfile = catchAsync(async (req, res) => {
     profileImage = result.secure_url;
   }
 
-  const data = req.body; // already parsed JSON or form-data fields
-  // console.log(profileImage);
+  const data = JSON.parse(req.body.data);
+  // console.log({ data, profileImage });
   const result = await userService.updateMyProfile(email, {
     ...data,
     profileImage,
