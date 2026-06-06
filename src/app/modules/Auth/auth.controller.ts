@@ -1,3 +1,4 @@
+import { jwtHelpers } from "./../../../helpers/jwtHalpers";
 import config from "../../../config";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
@@ -10,8 +11,31 @@ import {
 import { AuthService } from "./auth.services";
 import httpStatus from "http-status";
 
+const accessTokenMaxAge = jwtHelpers.parseExpiryToMs(
+  config.expires_in as string,
+);
+const refreshTokenMaxAge = jwtHelpers.parseExpiryToMs(
+  config.refresh_token_expires_in as string,
+);
+
 const loginUser = catchAsync(async (req, res) => {
-  const result = await AuthService.loginUser(req.body, req); // ← pass req
+  const result = await AuthService.loginUser(req.body, req);
+
+  // res.cookie("accessToken", result.accessToken, {
+  //   httpOnly: true,
+  //   secure: process.env.NODE_ENV === "production",
+  //   sameSite: config.env === "development" ? "lax" : "none",
+  //   path: "/",
+  //   maxAge: accessTokenMaxAge,
+  // });
+
+  // res.cookie("refreshToken", result.refreshToken, {
+  //   httpOnly: true,
+  //   secure: process.env.NODE_ENV === "production",
+  //   sameSite: config.env === "development" ? "lax" : "none",
+  //   path: "/",
+  //   maxAge: refreshTokenMaxAge,
+  // });
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -141,13 +165,24 @@ const getMyProfile = catchAsync(async (req, res) => {
 });
 
 const refreshToken = catchAsync(async (req, res) => {
-  const { refreshToken } = req.cookies;
+  const refreshToken = req.headers.authorization as string;
+
+  // console.log({ refreshToken });
   const result = await AuthService.refreshToken(refreshToken);
+
+  // res.cookie("accessToken", result.accessToken, {
+  //   httpOnly: true,
+  //   secure: process.env.NODE_ENV === "production",
+  //   sameSite: config.env === "development" ? "lax" : "none",
+  //   path: "/",
+  //   maxAge: accessTokenMaxAge,
+  // });
+
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: "Refresh token generated successfully!",
-    data: result,
+    data: result.accessToken,
   });
 });
 
@@ -186,8 +221,10 @@ const resetPassword = catchAsync(async (req, res) => {
 });
 
 const logout = catchAsync(async (req, res) => {
-  await AuthService.logout(req);
+  res.clearCookie("accessToken");
   res.clearCookie("refreshToken");
+  await AuthService.logout(req);
+
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

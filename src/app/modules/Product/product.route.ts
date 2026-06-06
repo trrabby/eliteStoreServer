@@ -17,6 +17,8 @@ router.get("/", ProductController.getAllProducts);
 
 router.get("/slug/:slug", ProductController.getProductBySlug);
 
+router.get("/id/:id", ProductController.getProductByIdPublic);
+
 // ─────────────────────────────────────────
 // VENDOR / ADMIN
 // ─────────────────────────────────────────
@@ -90,6 +92,12 @@ router.post(
   ProductController.createVariant,
 );
 
+router.get(
+  "/:id/variants",
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
+  ProductController.getProductVariants,
+);
+
 router.patch(
   "/:id/variants/:variantId",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
@@ -124,6 +132,12 @@ router.post(
   ProductController.addAttribute,
 );
 
+router.get(
+  "/:id/attributes",
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
+  ProductController.getAttributes,
+);
+
 router.delete(
   "/:id/attributes/:attributeId",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
@@ -140,6 +154,12 @@ router.post(
   multerUpload.none(),
   validateRequestFormdataOptionalPhoto(productValidation.addRelatedProducts),
   ProductController.addRelatedProducts,
+);
+
+router.get(
+  "/:id/related",
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
+  ProductController.getRelatedProducts,
 );
 
 router.delete(

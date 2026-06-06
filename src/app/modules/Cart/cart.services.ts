@@ -241,7 +241,7 @@ const addToCart = async (
       quantity: payload.quantity,
     },
   });
-
+  console.log(cartItem);
   return cartItem;
 };
 

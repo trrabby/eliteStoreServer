@@ -77,6 +77,17 @@ const getAllProducts = catchAsync(async (req, res) => {
   });
 });
 
+const getProductByIdPublic = catchAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const result = await productService.getProductByIdPublic(id);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Product retrieved successfully",
+    data: result,
+  });
+});
+
 const getProductBySlug = catchAsync(async (req, res) => {
   const { slug } = req.params;
   const result = await productService.getProductBySlug(slug);
@@ -233,6 +244,17 @@ const createVariant = catchAsync(async (req, res) => {
   });
 });
 
+const getProductVariants = catchAsync(async (req, res) => {
+  const productId = Number(req.params.id);
+  const result = await productService.getProductVariants(productId);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Variants retrieved successfully",
+    data: result,
+  });
+});
+
 const updateVariant = catchAsync(async (req, res) => {
   const variantId = Number(req.params.variantId);
   const { email } = req.user as { email: string };
@@ -290,6 +312,17 @@ const addAttribute = catchAsync(async (req, res) => {
   });
 });
 
+const getAttributes = catchAsync(async (req, res) => {
+  const productId = Number(req.params.id);
+  const result = await productService.getAttributes(productId);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Attributes retrieved successfully",
+    data: result,
+  });
+});
+
 const deleteAttribute = catchAsync(async (req, res) => {
   const attributeId = Number(req.params.attributeId);
   const { email } = req.user as { email: string };
@@ -322,7 +355,16 @@ const addRelatedProducts = catchAsync(async (req, res) => {
     data: null,
   });
 });
-
+const getRelatedProducts = catchAsync(async (req, res) => {
+  const productId = Number(req.params.id);
+  const result = await productService.getRelatedProducts(productId);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Related products retrieved successfully",
+    data: result,
+  });
+});
 const removeRelatedProduct = catchAsync(async (req, res) => {
   const productId = Number(req.params.id);
   const relatedId = Number(req.params.relatedId);
@@ -339,6 +381,7 @@ const removeRelatedProduct = catchAsync(async (req, res) => {
 export const ProductController = {
   createProduct,
   getAllProducts,
+  getProductByIdPublic,
   getProductBySlug,
   getProductById,
   getMyProducts,
@@ -348,11 +391,14 @@ export const ProductController = {
   setPrimaryImage,
   deleteProductImage,
   createVariant,
+  getProductVariants,
   updateVariant,
   updateStock,
   deleteVariant,
   addAttribute,
+  getAttributes,
   deleteAttribute,
   addRelatedProducts,
+  getRelatedProducts,
   removeRelatedProduct,
 };

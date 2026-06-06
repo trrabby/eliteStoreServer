@@ -227,7 +227,7 @@ const refreshToken = async (token: string) => {
     config.expires_in as string,
   );
 
-  return accessToken;
+  return { accessToken };
 };
 
 // Change password
@@ -341,7 +341,7 @@ const resetPassword = async (
 };
 
 const logout = async (req: Request) => {
-  const token = req.headers.authorization;
+  const token = req.headers.authorization || req.cookies?.accessToken;
 
   if (!token) {
     throw new AppError(httpStatus.UNAUTHORIZED, "No token provided");
