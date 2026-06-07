@@ -155,6 +155,24 @@ const getWalletStats = catchAsync(async (req, res) => {
   });
 });
 
+const getAllTransactions = catchAsync(async (req, res) => {
+  const { page, limit, type, reason, status, userId } = req.query;
+  const result = await walletService.getAllTransactions({
+    page: page ? Number(page) : undefined,
+    limit: limit ? Number(limit) : undefined,
+    type: type ? String(type) : undefined,
+    reason: reason ? String(reason) : undefined,
+    status: status ? String(status) : undefined,
+    userId: userId ? Number(userId) : undefined,
+  });
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Transactions retrieved successfully",
+    data: result,
+  });
+});
+
 export const WalletController = {
   getWallet,
   getTransactionHistory,
@@ -167,4 +185,5 @@ export const WalletController = {
   getAllWallets,
   adminCreditWallet,
   getWalletStats,
+  getAllTransactions,
 };

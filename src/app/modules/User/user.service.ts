@@ -212,6 +212,27 @@ const updateMyProfile = async (email: string, data: any) => {
   return updated;
 };
 
+// toggle user status (inactive & banned) - admin only
+const toggleUserStatus = async (id: number) => {
+  const user = await prisma.user.findUnique({
+    where: { id },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  const updated = await prisma.user.update({
+    where: { id },
+    data: {
+      isActive: !user.isActive,
+      isBanned: !user.isBanned,
+    },
+  });
+
+  return updated;
+};
+
 // Soft delete
 const deleteAProfile = async (publicId: string) => {
   const user = await prisma.user.findUnique({
@@ -489,6 +510,7 @@ export const userService = {
   getAccountByEmail,
   makeAdmin,
   updateMyProfile,
+  toggleUserStatus,
   deleteAProfile,
   // address
   addAddress,

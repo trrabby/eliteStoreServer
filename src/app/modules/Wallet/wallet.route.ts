@@ -70,4 +70,10 @@ router.post(
   WalletController.adminCreditWallet,
 );
 
+router.get(
+  "/transactions/all",
+  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  WalletController.getAllTransactions,
+);
+
 export const walletRouter = router;

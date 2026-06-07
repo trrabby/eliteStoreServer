@@ -47,6 +47,12 @@ router.patch(
 );
 
 router.patch(
+  "/toggle-status/:id",
+  auth(Role.SUPER_ADMIN),
+  UserController.toggleUserStatus,
+);
+
+router.patch(
   "/delete-profile/:publicId",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
   UserController.deleteAProfile,

@@ -1,5 +1,4 @@
 import httpStatus from "http-status";
-import axios from "axios";
 import prisma from "../../../shared/prisma";
 import AppError from "../../errors/AppError";
 import {
@@ -8,6 +7,7 @@ import {
   initiateBkashPayment,
   executeBkashPayment,
 } from "../Payment/payment.getways";
+import { Prisma } from "@prisma/client";
 
 // ─────────────────────────────────────────
 // HELPER
@@ -319,7 +319,6 @@ const handleWalletBkashCallback = async (query: {
 };
 
 // ─── Transfer to another user wallet ─────
-
 const transferToWallet = async (
   senderEmail: string,
   recipientEmail: string,
@@ -459,6 +458,109 @@ const getAllWallets = async (query: {
   return { total, page, limit, wallets };
 };
 
+// get all wallet transactions — admin
+const getAllTransactions = async (query: {
+  page?: number;
+  limit?: number;
+  type?: string;
+  status?: string;
+  reason?: string;
+  search?: string;
+  userId?: number;
+}) => {
+  const page = query.page ?? 1;
+  const limit = query.limit ?? 20;
+  const skip = (page - 1) * limit;
+
+  const where: Prisma.WalletTransactionWhereInput = {};
+
+  if (query.type) {
+    where.type = query.type as any;
+  }
+
+  if (query.reason) {
+    where.reason = {
+      contains: query.reason,
+      mode: "insensitive",
+    };
+  }
+  if (query.status) {
+    where.status = query.status as any;
+  }
+  if (query.userId) {
+    where.wallet = {
+      userId: query.userId,
+    };
+  }
+  if (query.search) {
+    where.wallet = {
+      user: {
+        OR: [
+          {
+            email: {
+              contains: query.search,
+              mode: "insensitive",
+            },
+          },
+          {
+            accountInfo: {
+              firstName: {
+                contains: query.search,
+                mode: "insensitive",
+              },
+            },
+          },
+          {
+            accountInfo: {
+              lastName: {
+                contains: query.search,
+                mode: "insensitive",
+              },
+            },
+          },
+        ],
+      },
+    };
+  }
+
+  const [transactions, total] = await Promise.all([
+    prisma.walletTransaction.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: {
+        createdAt: "desc",
+      },
+      include: {
+        wallet: {
+          include: {
+            user: {
+              select: {
+                email: true,
+                accountInfo: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+
+    prisma.walletTransaction.count({ where }),
+  ]);
+
+  return {
+    total,
+    page,
+    limit,
+    transactions,
+  };
+};
+
 // admin credit wallet manually
 const adminCreditWallet = async (
   userId: number,
@@ -573,6 +675,7 @@ export const walletService = {
   handleWalletBkashCallback,
   transferToWallet,
   getAllWallets,
+  getAllTransactions,
   adminCreditWallet,
   getWalletStats,
 };

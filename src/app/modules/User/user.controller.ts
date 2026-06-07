@@ -86,6 +86,17 @@ const updateMyProfile = catchAsync(async (req, res) => {
   });
 });
 
+const toggleUserStatus = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await userService.toggleUserStatus(Number(id));
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "User status toggled successfully",
+    data: result,
+  });
+});
+
 const deleteAProfile = catchAsync(async (req, res) => {
   const { publicId } = req.params;
   await userService.deleteAProfile(publicId as string);
@@ -180,6 +191,7 @@ export const UserController = {
   makeAdmin,
   getAnAccountByEmail,
   updateMyProfile,
+  toggleUserStatus,
   deleteAProfile,
   // address
   addAddress,
