@@ -40,6 +40,29 @@ const getVariantInventoryLogs = catchAsync(async (req, res) => {
   });
 });
 
+// get all vendor stock variants - admin/vendor
+const getAllVendorStockVariants = catchAsync(async (req, res) => {
+  const vendorId = Number(req.params.vendorId);
+  const { page, limit, search, status, sortBy, minStock, maxStock } = req.query;
+
+  const result = await inventoryLogService.getAllVendorStockVariants(vendorId, {
+    page: page ? Number(page) : undefined,
+    limit: limit ? Number(limit) : undefined,
+    search: search ? String(search) : undefined,
+    status: status ? String(status) : undefined,
+    sortBy: sortBy ? String(sortBy) : undefined,
+    minStock: minStock ? Number(minStock) : undefined,
+    maxStock: maxStock ? Number(maxStock) : undefined,
+  });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Vendor stock variants retrieved successfully",
+    data: result,
+  });
+});
+
 const getLowStockVariants = catchAsync(async (req, res) => {
   const { page, limit, threshold } = req.query;
   const result = await inventoryLogService.getLowStockVariants({
@@ -51,6 +74,26 @@ const getLowStockVariants = catchAsync(async (req, res) => {
     statusCode: httpStatus.OK,
     success: true,
     message: "Low stock variants retrieved successfully",
+    data: result,
+  });
+});
+
+const getLowStockVariantsByVendor = catchAsync(async (req, res) => {
+  const vendorId = Number(req.params.vendorId);
+  const { page, limit, threshold } = req.query;
+  const result = await inventoryLogService.getLowStockVariantsByVendor(
+    vendorId,
+    {
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+
+      threshold: threshold ? Number(threshold) : undefined,
+    },
+  );
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Low stock variants for vendor retrieved successfully",
     data: result,
   });
 });
@@ -69,6 +112,24 @@ const getOutOfStockVariants = catchAsync(async (req, res) => {
   });
 });
 
+const getOutOfStockVariantsByVendor = catchAsync(async (req, res) => {
+  const vendorId = Number(req.params.vendorId);
+  const { page, limit } = req.query;
+  const result = await inventoryLogService.getOutOfStockVariantsByVendor(
+    vendorId,
+    {
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    },
+  );
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Out of stock variants for vendor retrieved successfully",
+    data: result,
+  });
+});
+
 const getInventoryStats = catchAsync(async (req, res) => {
   const result = await inventoryLogService.getInventoryStats();
   sendResponse(res, {
@@ -82,7 +143,10 @@ const getInventoryStats = catchAsync(async (req, res) => {
 export const InventoryLogController = {
   getAllInventoryLogs,
   getVariantInventoryLogs,
+  getAllVendorStockVariants,
   getLowStockVariants,
+  getLowStockVariantsByVendor,
   getOutOfStockVariants,
+  getOutOfStockVariantsByVendor,
   getInventoryStats,
 };

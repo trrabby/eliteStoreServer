@@ -57,13 +57,6 @@ const createVendorProfile = async (
     );
   }
 
-  if (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) {
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      "Admins cannot create vendor profiles. Please use a regular account to create a vendor profile.",
-    );
-  }
-
   // check storeName uniqueness
   const storeExists = await prisma.vendorProfile.findUnique({
     where: { storeName: payload.storeName },
@@ -91,12 +84,6 @@ const createVendorProfile = async (
         logo: logo ?? null,
         banner: banner ?? null,
       },
-    });
-
-    // upgrade user role to VENDOR
-    await tx.user.update({
-      where: { id: user.id },
-      data: { role: Role.VENDOR, vendorProfileId: profile.id },
     });
 
     return profile;
@@ -306,6 +293,9 @@ const verifyVendor = async (publicId: string, email: string) => {
 
   const vendor = await prisma.vendorProfile.findUnique({
     where: { publicId },
+    include: {
+      user: true, // Include the user associated with this vendor profile
+    },
   });
 
   if (!vendor) {
@@ -316,14 +306,48 @@ const verifyVendor = async (publicId: string, email: string) => {
     throw new AppError(httpStatus.BAD_REQUEST, "Vendor is already verified");
   }
 
-  const updated = await prisma.vendorProfile.update({
-    where: { publicId },
-    data: { isVerified: true, verifiedById: updater.id },
-    select: {
-      publicId: true,
-      storeName: true,
-      isVerified: true,
-    },
+  // Use transaction to update both vendor profile and user role
+  const updated = await prisma.$transaction(async (tx) => {
+    // Update vendor profile to verified
+    const updatedVendor = await tx.vendorProfile.update({
+      where: { publicId },
+      data: {
+        isVerified: true,
+        verifiedById: updater.id,
+      },
+      select: {
+        publicId: true,
+        storeName: true,
+        isVerified: true,
+        userId: true,
+      },
+    });
+
+    // Get the user associated with this vendor
+    const user = await tx.user.findUnique({
+      where: { id: vendor.userId },
+    });
+
+    if (!user) {
+      throw new AppError(
+        httpStatus.NOT_FOUND,
+        "User associated with vendor not found",
+      );
+    }
+
+    // Upgrade user role to VENDOR (but preserve ADMIN/SUPER_ADMIN roles)
+    await tx.user.update({
+      where: { id: user.id },
+      data: {
+        role:
+          user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN
+            ? user.role
+            : Role.VENDOR,
+        roleUpdatedById: updater.id,
+      },
+    });
+
+    return updatedVendor;
   });
 
   return updated;
