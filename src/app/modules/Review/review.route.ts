@@ -30,6 +30,12 @@ router.post(
   ReviewController.createReview,
 );
 
+router.get(
+  "/vendor/:vendorId",
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
+  ReviewController.getAllReviewsByVendor,
+);
+
 router.get("/my/reviews", auth(...allRoles), ReviewController.getMyReviews);
 
 router.patch(

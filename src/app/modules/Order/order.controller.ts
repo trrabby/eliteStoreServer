@@ -2,6 +2,7 @@ import httpStatus from "http-status";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { orderService } from "./order.service";
+import AppError from "../../errors/AppError";
 
 const createOrder = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
@@ -32,6 +33,44 @@ const getAllOrders = catchAsync(async (req, res) => {
     statusCode: httpStatus.OK,
     success: true,
     message: "Orders retrieved successfully",
+    data: result,
+  });
+});
+
+// get all orders for vendor's products — vendor
+const getVendorOrders = catchAsync(async (req, res) => {
+  const vendorId = Number(req.params.vendorId);
+
+  if (!vendorId) {
+    throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
+  }
+
+  const {
+    page,
+    limit,
+    status,
+    search,
+    dateFrom,
+    dateTo,
+    minAmount,
+    maxAmount,
+  } = req.query;
+
+  const result = await orderService.getVendorOrders(vendorId, {
+    page: page ? Number(page) : undefined,
+    limit: limit ? Number(limit) : undefined,
+    status: status ? String(status) : undefined,
+    search: search ? String(search) : undefined,
+    dateFrom: dateFrom ? String(dateFrom) : undefined,
+    dateTo: dateTo ? String(dateTo) : undefined,
+    minAmount: minAmount ? Number(minAmount) : undefined,
+    maxAmount: maxAmount ? Number(maxAmount) : undefined,
+  });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Vendor orders retrieved successfully",
     data: result,
   });
 });
@@ -141,6 +180,7 @@ const getOrderStats = catchAsync(async (req, res) => {
 export const OrderController = {
   createOrder,
   getAllOrders,
+  getVendorOrders,
   getMyOrders,
   getMyOrderById,
   getMyOrderByNumber,

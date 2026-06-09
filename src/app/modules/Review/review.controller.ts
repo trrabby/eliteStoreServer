@@ -65,6 +65,45 @@ const getAllReviews = catchAsync(async (req, res) => {
   });
 });
 
+// get all reviews by vendor - vendor
+const getAllReviewsByVendor = catchAsync(async (req, res) => {
+  const vendorId = Number(req.params.vendorId);
+  const {
+    page,
+    limit,
+    status,
+    productId,
+    rating,
+    search,
+    sortBy,
+    dateFrom,
+    dateTo,
+    hasResponse,
+    withImages,
+  } = req.query;
+  // console.log(vendorId, req.query);
+  const result = await reviewService.getAllReviewsByVendor(vendorId, {
+    page: page ? Number(page) : undefined,
+    limit: limit ? Number(limit) : undefined,
+    productId: productId ? Number(productId) : undefined,
+    rating: rating ? Number(rating) : undefined,
+    status: status ? String(status) : undefined,
+    search: search ? String(search) : undefined,
+    sortBy: sortBy ? String(sortBy) : undefined,
+    dateFrom: dateFrom ? String(dateFrom) : undefined,
+    dateTo: dateTo ? String(dateTo) : undefined,
+    hasResponse: hasResponse ? hasResponse === "true" : undefined,
+    withImages: withImages ? withImages === "true" : undefined,
+  });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Vendor reviews retrieved successfully",
+    data: result,
+  });
+});
+
 const getMyReviews = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
   const { page, limit } = req.query;
@@ -167,6 +206,7 @@ export const ReviewController = {
   createReview,
   getProductReviews,
   getAllReviews,
+  getAllReviewsByVendor,
   getMyReviews,
   getReviewById,
   updateReview,

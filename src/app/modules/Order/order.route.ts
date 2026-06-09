@@ -36,7 +36,7 @@ router.get(
   OrderController.getMyOrderByNumber,
 );
 
-// cancel order — customer
+// cancel order — customer/vendor
 router.patch(
   "/my-orders/:id/cancel",
   auth(...allRoles),
@@ -88,4 +88,10 @@ router.patch(
   OrderController.updateOrderStatusBulk,
 );
 
+// vendor
+router.get(
+  "/vendor-products/:vendorId",
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
+  OrderController.getVendorOrders,
+);
 export const orderRouter = router;

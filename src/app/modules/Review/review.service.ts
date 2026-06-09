@@ -269,6 +269,238 @@ const getAllReviews = async (query: {
   return { total, page, limit, reviews };
 };
 
+// get all reviews of a vendor - vendor
+const getAllReviewsByVendor = async (
+  vendorId: number,
+  query: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    productId?: number;
+    rating?: number;
+    search?: string;
+    sortBy?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    hasResponse?: boolean;
+    withImages?: boolean;
+  },
+) => {
+  // console.log(vendorId, query);
+  const page = query.page ?? 1;
+  const limit = query.limit ?? 20;
+  const skip = (page - 1) * limit;
+  const sortBy = query.sortBy ?? "createdAt_desc";
+
+  // Build where clause - filter by product's vendorId
+  const where: any = {
+    product: {
+      vendorId: vendorId,
+    },
+  };
+
+  // Basic filters
+  if (query.status) where.status = query.status;
+  if (query.productId) where.productId = query.productId;
+  if (query.rating) where.rating = query.rating;
+
+  // Filter by date range
+  if (query.dateFrom) {
+    where.createdAt = {
+      ...where.createdAt,
+      gte: new Date(query.dateFrom),
+    };
+  }
+  if (query.dateTo) {
+    where.createdAt = {
+      ...where.createdAt,
+      lte: new Date(query.dateTo),
+    };
+  }
+
+  // Filter by response status (if you have vendorResponse in your schema)
+  // Note: Based on your schema, there's no vendorResponse field in Review model
+  // You might need to add this or remove this filter
+  if (query.hasResponse !== undefined) {
+    // If you have a vendorResponse relation, use it
+    // where.vendorResponse = query.hasResponse ? { isNot: null } : null;
+    // For now, we'll skip this filter or you can implement it if you have the relation
+  }
+
+  // Filter by images - using the images array in Review model
+  if (query.withImages !== undefined) {
+    if (query.withImages) {
+      where.images = { isEmpty: false };
+    } else {
+      where.images = { isEmpty: true };
+    }
+  }
+
+  // Search functionality
+  if (query.search) {
+    where.OR = [
+      { title: { contains: query.search, mode: "insensitive" } },
+      { body: { contains: query.search, mode: "insensitive" } },
+      {
+        product: {
+          name: { contains: query.search, mode: "insensitive" },
+        },
+      },
+      {
+        user: {
+          email: { contains: query.search, mode: "insensitive" },
+        },
+      },
+      {
+        user: {
+          accountInfo: {
+            OR: [
+              { firstName: { contains: query.search, mode: "insensitive" } },
+              { lastName: { contains: query.search, mode: "insensitive" } },
+            ],
+          },
+        },
+      },
+    ];
+  }
+
+  // Build order by
+  let orderBy: any = {};
+  switch (sortBy) {
+    case "createdAt_desc":
+      orderBy = { createdAt: "desc" };
+      break;
+    case "createdAt_asc":
+      orderBy = { createdAt: "asc" };
+      break;
+    case "rating_desc":
+      orderBy = { rating: "desc" };
+      break;
+    case "rating_asc":
+      orderBy = { rating: "asc" };
+      break;
+    case "updatedAt_desc":
+      orderBy = { updatedAt: "desc" };
+      break;
+    case "updatedAt_asc":
+      orderBy = { updatedAt: "asc" };
+      break;
+    default:
+      orderBy = { createdAt: "desc" };
+  }
+
+  const [reviews, total] = await Promise.all([
+    prisma.review.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy,
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            vendorId: true,
+            images: {
+              where: { isPrimary: true },
+              take: 1,
+              select: { url: true },
+            },
+            vendor: {
+              select: {
+                id: true,
+                storeName: true,
+              },
+            },
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            email: true,
+            accountInfo: {
+              select: {
+                firstName: true,
+                lastName: true,
+                avatar: true,
+              },
+            },
+          },
+        },
+        statusUpdatedBy: {
+          select: {
+            id: true,
+            email: true,
+          },
+        },
+      },
+    }),
+    prisma.review.count({ where }),
+  ]);
+
+  // Calculate summary statistics (only for reviews belonging to this vendor)
+  const summary = await prisma.review.aggregate({
+    where,
+    _avg: {
+      rating: true,
+    },
+    _count: {
+      id: true,
+    },
+    _min: {
+      rating: true,
+    },
+    _max: {
+      rating: true,
+    },
+  });
+
+  // Calculate rating distribution
+  const ratingDistribution = await prisma.review.groupBy({
+    by: ["rating"],
+    where,
+    _count: {
+      rating: true,
+    },
+  });
+
+  // Transform rating distribution
+  const distribution = [1, 2, 3, 4, 5].map((rating) => {
+    const found = ratingDistribution.find((r) => r.rating === rating);
+    return {
+      rating,
+      count: found?._count.rating || 0,
+    };
+  });
+
+  // Transform reviews to include image URLs properly
+  const transformedReviews = reviews.map((review) => ({
+    ...review,
+    images: review.images || [], // images is already an array of strings
+  }));
+
+  return {
+    success: true,
+    data: {
+      reviews: transformedReviews,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+      summary: {
+        averageRating: summary._avg.rating || 0,
+        totalReviews: summary._count.id,
+        minRating: summary._min.rating || 0,
+        maxRating: summary._max.rating || 0,
+      },
+      distribution,
+    },
+  };
+};
+
 // get my reviews — customer
 const getMyReviews = async (
   email: string,
@@ -576,6 +808,7 @@ export const reviewService = {
   createReview,
   getProductReviews,
   getAllReviews,
+  getAllReviewsByVendor,
   getMyReviews,
   getReviewById,
   updateReview,

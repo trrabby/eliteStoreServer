@@ -311,6 +311,232 @@ const getAllOrders = async (query: {
   return { total, page, limit, orders };
 };
 
+// get all orders for vendor's products — vendor
+const getVendorOrders = async (
+  vendorId: number,
+  query: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    search?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    minAmount?: number;
+    maxAmount?: number;
+  },
+) => {
+  const page = query.page ?? 1;
+  const limit = query.limit ?? 20;
+  const skip = (page - 1) * limit;
+
+  // Build where clause for orders through vendor's products
+  const where: any = {
+    items: {
+      some: {
+        product: {
+          vendorId: vendorId,
+        },
+      },
+    },
+  };
+
+  // Apply filters
+  if (query.status) where.status = query.status;
+
+  if (query.search) {
+    where.OR = [
+      { orderNumber: { contains: query.search, mode: "insensitive" } },
+      { user: { email: { contains: query.search, mode: "insensitive" } } },
+      {
+        user: {
+          accountInfo: {
+            OR: [
+              { firstName: { contains: query.search, mode: "insensitive" } },
+              { lastName: { contains: query.search, mode: "insensitive" } },
+            ],
+          },
+        },
+      },
+    ];
+  }
+
+  if (query.dateFrom || query.dateTo) {
+    where.createdAt = {
+      ...(query.dateFrom && { gte: new Date(query.dateFrom) }),
+      ...(query.dateTo && { lte: new Date(query.dateTo) }),
+    };
+  }
+
+  if (query.minAmount || query.maxAmount) {
+    where.total = {
+      ...(query.minAmount && { gte: query.minAmount }),
+      ...(query.maxAmount && { lte: query.maxAmount }),
+    };
+  }
+
+  const [orders, total] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        publicId: true,
+        orderNumber: true,
+        status: true,
+        subtotal: true,
+        discount: true,
+        shippingFee: true,
+        tax: true,
+        total: true,
+        notes: true,
+        createdAt: true,
+        deliveredAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            accountInfo: {
+              select: {
+                firstName: true,
+                lastName: true,
+                avatar: true,
+              },
+            },
+          },
+        },
+        shippingAddress: {
+          select: {
+            addressLine1: true,
+            addressLine2: true,
+            city_district: true,
+            postalCode: true,
+            country: true,
+            phone: true,
+            fullName: true,
+            landmark: true,
+          },
+        },
+        payment: {
+          select: {
+            status: true,
+            method: true,
+            transactionId: true,
+          },
+        },
+        items: {
+          where: {
+            product: {
+              vendorId: vendorId,
+            },
+          },
+          select: {
+            id: true,
+            quantity: true,
+            unitPrice: true,
+            totalPrice: true,
+            snapshot: true,
+            product: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                vendorId: true,
+                images: {
+                  where: { isPrimary: true },
+                  take: 1,
+                  select: { url: true },
+                },
+              },
+            },
+            variant: {
+              select: {
+                id: true,
+                sku: true,
+                name: true,
+              },
+            },
+          },
+        },
+        _count: {
+          select: { items: true },
+        },
+      },
+    }),
+    prisma.order.count({ where }),
+  ]);
+
+  // Calculate summary statistics
+  const summary = await prisma.order.aggregate({
+    where,
+    _count: {
+      id: true,
+    },
+    _sum: {
+      total: true,
+    },
+    _avg: {
+      total: true,
+    },
+  });
+
+  // Get status breakdown
+  const statusBreakdown = await prisma.order.groupBy({
+    by: ["status"],
+    where,
+    _count: {
+      status: true,
+    },
+  });
+
+  const statusCounts = {
+    PENDING: 0,
+    PROCESSING: 0,
+    SHIPPED: 0,
+    DELIVERED: 0,
+    CANCELLED: 0,
+    REFUNDED: 0,
+  };
+
+  statusBreakdown.forEach((item) => {
+    const status = item.status as keyof typeof statusCounts;
+    if (statusCounts.hasOwnProperty(status)) {
+      statusCounts[status] = item._count.status;
+    }
+  });
+
+  // Calculate revenue (excluding cancelled and refunded orders)
+  const revenueAgg = await prisma.order.aggregate({
+    where: {
+      ...where,
+      status: { notIn: ["CANCELLED", "REFUNDED"] },
+    },
+    _sum: {
+      total: true,
+    },
+  });
+
+  return {
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+    orders,
+    summary: {
+      totalOrders: summary._count.id,
+      totalRevenue: revenueAgg._sum.total || 0,
+      averageOrderValue: summary._avg.total || 0,
+      pendingOrders: statusCounts.PENDING,
+      processingOrders: statusCounts.PROCESSING,
+      shippedOrders: statusCounts.SHIPPED,
+      deliveredOrders: statusCounts.DELIVERED,
+      cancelledOrders: statusCounts.CANCELLED,
+    },
+    statusBreakdown: statusCounts,
+  };
+};
+
 // get my orders — customer
 const getMyOrders = async (
   email: string,
@@ -479,7 +705,93 @@ const getMyOrderByNumber = async (email: string, orderNumber: string) => {
   return getOrderById(order.id, user.id, true);
 };
 
-// cancel order — customer
+// // cancel order — customer
+// const cancelOrder = async (
+//   email: string,
+//   orderId: number,
+//   cancelReason: string,
+// ) => {
+//   const user = await prisma.user.findUnique({
+//     where: { email, isActive: true },
+//   });
+
+//   if (!user) {
+//     throw new AppError(httpStatus.NOT_FOUND, "User not found");
+//   }
+
+//   const order = await prisma.order.findFirst({
+//     where: { id: orderId, userId: user.id },
+//     include: { items: true },
+//   });
+
+//   if (!order) {
+//     throw new AppError(httpStatus.NOT_FOUND, "Order not found");
+//   }
+
+//   // only pending or confirmed can be cancelled by customer
+//   if (!["PENDING", "CONFIRMED"].includes(order.status)) {
+//     throw new AppError(
+//       httpStatus.BAD_REQUEST,
+//       `Order cannot be cancelled at "${order.status}" stage`,
+//     );
+//   }
+
+//   await prisma.$transaction(async (tx) => {
+//     // update order status
+//     await tx.order.update({
+//       where: { id: orderId },
+//       data: { status: "CANCELLED", cancelReason },
+//     });
+
+//     // restore stock
+//     for (const item of order.items) {
+//       await tx.productVariant.update({
+//         where: { id: item.variantId },
+//         data: { stock: { increment: item.quantity } },
+//       });
+
+//       await tx.inventoryLog.create({
+//         data: {
+//           variantId: item.variantId,
+//           change: item.quantity,
+//           reason: "CANCELLATION",
+//           referenceId: orderId,
+//         },
+//       });
+
+//       // decrement totalSold
+//       await tx.product.update({
+//         where: { id: item.productId },
+//         data: { totalSold: { decrement: item.quantity } },
+//       });
+//     }
+
+//     // reverse coupon usage if applied
+//     if (order.couponId) {
+//       await tx.coupon.update({
+//         where: { id: order.couponId },
+//         data: { usedCount: { decrement: 1 } },
+//       });
+
+//       await tx.couponUsage.deleteMany({
+//         where: { couponId: order.couponId, orderId },
+//       });
+//     }
+
+//     // add status history
+//     await tx.orderStatusHistory.create({
+//       data: {
+//         orderId,
+//         status: "CANCELLED",
+//         note: cancelReason,
+//       },
+//     });
+//   });
+
+//   return "Order cancelled successfully";
+// };
+
+// cancel order — customer/vendor
 const cancelOrder = async (
   email: string,
   orderId: number,
@@ -487,6 +799,7 @@ const cancelOrder = async (
 ) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
+    include: { vendorProfile: true },
   });
 
   if (!user) {
@@ -495,74 +808,177 @@ const cancelOrder = async (
 
   const order = await prisma.order.findFirst({
     where: { id: orderId, userId: user.id },
-    include: { items: true },
+    include: { items: { include: { product: true, variant: true } } },
   });
 
   if (!order) {
     throw new AppError(httpStatus.NOT_FOUND, "Order not found");
   }
 
-  // only pending or confirmed can be cancelled by customer
-  if (!["PENDING", "CONFIRMED"].includes(order.status)) {
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      `Order cannot be cancelled at "${order.status}" stage`,
+  // For VENDOR role: check if vendor owns any items in this order
+  let vendorItems: typeof order.items = [];
+  let isVendorCancelling = false;
+
+  if (user.role === "VENDOR" && user.vendorProfile) {
+    vendorItems = order.items.filter(
+      (item) => item.product.vendorId === user.vendorProfile?.id,
     );
+
+    if (vendorItems.length === 0) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        "No items from your store in this order",
+      );
+    }
+
+    isVendorCancelling = true;
+  }
+
+  // Check if user is customer cancelling their own order
+  if (user.role === "CUSTOMER") {
+    // only pending or confirmed can be cancelled by customer
+    if (!["PENDING", "CONFIRMED"].includes(order.status)) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        `Order cannot be cancelled at "${order.status}" stage`,
+      );
+    }
+  }
+
+  // For vendor cancellation, check if items can be cancelled
+  if (isVendorCancelling) {
+    const cancellableStatuses = ["PENDING", "CONFIRMED", "PROCESSING"];
+    if (!cancellableStatuses.includes(order.status)) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        `Cannot cancel items when order is at "${order.status}" stage`,
+      );
+    }
   }
 
   await prisma.$transaction(async (tx) => {
-    // update order status
-    await tx.order.update({
-      where: { id: orderId },
-      data: { status: "CANCELLED", cancelReason },
-    });
+    if (isVendorCancelling) {
+      // Cancel only vendor's items
+      for (const item of vendorItems) {
+        // Restore stock
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: { stock: { increment: item.quantity } },
+        });
 
-    // restore stock
-    for (const item of order.items) {
-      await tx.productVariant.update({
-        where: { id: item.variantId },
-        data: { stock: { increment: item.quantity } },
-      });
+        // Inventory log
+        await tx.inventoryLog.create({
+          data: {
+            variantId: item.variantId,
+            change: item.quantity,
+            reason: "VENDOR_CANCELLATION",
+            referenceId: orderId,
+          },
+        });
 
-      await tx.inventoryLog.create({
-        data: {
-          variantId: item.variantId,
-          change: item.quantity,
-          reason: "CANCELLATION",
-          referenceId: orderId,
+        // Decrement totalSold
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { totalSold: { decrement: item.quantity } },
+        });
+      }
+
+      // Check if all items in order are cancelled
+      const remainingItems = await tx.orderItem.findMany({
+        where: {
+          orderId: orderId,
+          orderItemStatus: { not: "CANCELLED" },
         },
       });
 
-      // decrement totalSold
-      await tx.product.update({
-        where: { id: item.productId },
-        data: { totalSold: { decrement: item.quantity } },
+      // If no items left, cancel the entire order
+      if (remainingItems.length === 0) {
+        await tx.order.update({
+          where: { id: orderId },
+          data: {
+            status: "CANCELLED",
+            cancelReason: `All items cancelled by vendor. ${cancelReason}`,
+          },
+        });
+
+        // Reverse coupon usage if applicable
+        if (order.couponId) {
+          await tx.coupon.update({
+            where: { id: order.couponId },
+            data: { usedCount: { decrement: 1 } },
+          });
+
+          await tx.couponUsage.deleteMany({
+            where: { couponId: order.couponId, orderId },
+          });
+        }
+      }
+
+      // Add status history
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId,
+          status: order.status,
+          note: `Vendor cancelled items: ${vendorItems.map((i) => i.product.name).join(", ")}. Reason: ${cancelReason}`,
+          statusUpdatedById: user.id,
+        },
+      });
+    } else {
+      // Customer cancelling entire order
+      await tx.order.update({
+        where: { id: orderId },
+        data: { status: "CANCELLED", cancelReason },
+      });
+
+      // Restore stock for all items
+      for (const item of order.items) {
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: { stock: { increment: item.quantity } },
+        });
+
+        await tx.inventoryLog.create({
+          data: {
+            variantId: item.variantId,
+            change: item.quantity,
+            reason: "CANCELLATION",
+            referenceId: orderId,
+          },
+        });
+
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { totalSold: { decrement: item.quantity } },
+        });
+      }
+
+      // Reverse coupon usage if applied
+      if (order.couponId) {
+        await tx.coupon.update({
+          where: { id: order.couponId },
+          data: { usedCount: { decrement: 1 } },
+        });
+
+        await tx.couponUsage.deleteMany({
+          where: { couponId: order.couponId, orderId },
+        });
+      }
+
+      // Add status history
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId,
+          status: "CANCELLED",
+          note: cancelReason,
+          statusUpdatedById: user.id,
+        },
       });
     }
-
-    // reverse coupon usage if applied
-    if (order.couponId) {
-      await tx.coupon.update({
-        where: { id: order.couponId },
-        data: { usedCount: { decrement: 1 } },
-      });
-
-      await tx.couponUsage.deleteMany({
-        where: { couponId: order.couponId, orderId },
-      });
-    }
-
-    // add status history
-    await tx.orderStatusHistory.create({
-      data: {
-        orderId,
-        status: "CANCELLED",
-        note: cancelReason,
-      },
-    });
   });
 
-  return "Order cancelled successfully";
+  return isVendorCancelling
+    ? `${vendorItems.length} item(s) cancelled successfully`
+    : "Order cancelled successfully";
 };
 
 // update order status — admin
@@ -888,6 +1304,7 @@ const getOrderStats = async () => {
 export const orderService = {
   createOrder,
   getAllOrders,
+  getVendorOrders,
   getMyOrders,
   getMyOrderById,
   getMyOrderByNumber,
