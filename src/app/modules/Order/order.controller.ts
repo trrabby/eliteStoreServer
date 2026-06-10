@@ -8,10 +8,11 @@ const createOrder = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
   const data = JSON.parse(req.body.data);
   const result = await orderService.createOrder(email, data);
+
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
     success: true,
-    message: "Order placed successfully",
+    message: ` ${result.orderCount === 1 ? "Your order has been placed successfully" : `Success ! Your  have placed orders to ${result.orderCount} vendors`} `,
     data: result,
   });
 });
@@ -57,6 +58,39 @@ const getVendorOrders = catchAsync(async (req, res) => {
   } = req.query;
 
   const result = await orderService.getVendorOrders(vendorId, {
+    page: page ? Number(page) : undefined,
+    limit: limit ? Number(limit) : undefined,
+    status: status ? String(status) : undefined,
+    search: search ? String(search) : undefined,
+    dateFrom: dateFrom ? String(dateFrom) : undefined,
+    dateTo: dateTo ? String(dateTo) : undefined,
+    minAmount: minAmount ? Number(minAmount) : undefined,
+    maxAmount: maxAmount ? Number(maxAmount) : undefined,
+  });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Vendor orders retrieved successfully",
+    data: result,
+  });
+});
+
+// Add this controller alongside existing ones:
+const getMyVendorOrders = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
+  const {
+    page,
+    limit,
+    status,
+    search,
+    dateFrom,
+    dateTo,
+    minAmount,
+    maxAmount,
+  } = req.query;
+
+  const result = await orderService.getMyVendorOrders(email, {
     page: page ? Number(page) : undefined,
     limit: limit ? Number(limit) : undefined,
     status: status ? String(status) : undefined,
@@ -181,6 +215,7 @@ export const OrderController = {
   createOrder,
   getAllOrders,
   getVendorOrders,
+  getMyVendorOrders,
   getMyOrders,
   getMyOrderById,
   getMyOrderByNumber,

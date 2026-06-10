@@ -1,7 +1,6 @@
 import httpStatus from "http-status";
 import prisma from "../../../shared/prisma";
 import AppError from "../../errors/AppError";
-import { validateCouponForUser } from "../Coupon/coupon.service";
 
 // ─────────────────────────────────────────
 // HELPERS
@@ -36,10 +35,13 @@ const isValidStatusTransition = (current: string, next: string): boolean => {
 // SERVICES
 // ─────────────────────────────────────────
 
-// create order from cart
+// ─────────────────────────────────────────
+// createOrder — one order per vendor
+// ─────────────────────────────────────────
 const createOrder = async (
   email: string,
   payload: {
+    shippingFeeFromClient?: number;
     shippingAddressId: number;
     billingAddressId?: number;
     couponCode?: string;
@@ -50,194 +52,450 @@ const createOrder = async (
     where: { email, isActive: true },
     include: {
       cart: {
-        include: { items: { include: { product: true, variant: true } } },
+        include: {
+          items: {
+            include: {
+              product: {
+                include: {
+                  vendor: true,
+                  flashSaleItem: {
+                    include: { flashSale: true },
+                  },
+                  discounts: {
+                    where: {
+                      isActive: true,
+                      startsAt: { lte: new Date() },
+                      expiresAt: { gte: new Date() },
+                    },
+                  },
+                },
+              },
+              variant: true,
+            },
+          },
+        },
       },
     },
   });
 
-  if (!user) {
-    throw new AppError(httpStatus.NOT_FOUND, "User not found");
-  }
-
-  // validate cart
-  if (!user.cart || user.cart.items.length === 0) {
+  if (!user) throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  if (!user.cart?.items.length)
     throw new AppError(httpStatus.BAD_REQUEST, "Cart is empty");
-  }
 
-  // validate shipping address belongs to user
+  // ── Validate shipping address ──────────────────────────
   const shippingAddress = await prisma.address.findFirst({
     where: { id: payload.shippingAddressId, userId: user.id },
   });
-
-  if (!shippingAddress) {
+  if (!shippingAddress)
     throw new AppError(httpStatus.NOT_FOUND, "Shipping address not found");
-  }
-  let billingAddress = null;
-  // validate billing address if provided
-  if (payload.billingAddressId) {
-    billingAddress = await prisma.address.findFirst({
-      where: { id: payload.billingAddressId, userId: user.id },
-    });
-    if (!billingAddress) {
-      throw new AppError(httpStatus.NOT_FOUND, "Billing address not found");
-    }
+
+  const billingAddress = payload.billingAddressId
+    ? await prisma.address.findFirst({
+        where: { id: payload.billingAddressId, userId: user.id },
+      })
+    : null;
+
+  // ── Calculate discounted price for each item ────────────
+  interface ProcessedItem {
+    cartItem: any;
+    originalPrice: number;
+    productDiscountPrice: number; // Price after product/flash sale discount
+    productDiscountApplied: number; // Amount saved from product discount
+    productDiscountType: string;
+    productDiscountValue: number;
+    flashSaleId?: number;
+    productDiscountId?: number;
   }
 
-  // validate all cart items — stock + status
+  const processedItems: ProcessedItem[] = [];
   const issues: string[] = [];
+  let totalProductDiscount = 0;
+  let totalAfterProductDiscount = 0;
 
   for (const item of user.cart.items) {
-    if (item.product.status !== "ACTIVE") {
+    // Check product status
+    if (item.product.status !== "ACTIVE")
       issues.push(`"${item.product.name}" is no longer available`);
-    }
-    if (!item.variant.isActive) {
+    if (!item.variant.isActive)
       issues.push(`A variant of "${item.product.name}" is unavailable`);
-    }
-    if (item.variant.stock < item.quantity) {
+    if (item.variant.stock < item.quantity)
       issues.push(
         `"${item.product.name}" only has ${item.variant.stock} in stock`,
       );
+
+    const originalPrice = Number(item.variant.price);
+    let priceAfterProductDiscount = originalPrice;
+    let productDiscountApplied = 0;
+    let productDiscountType = "";
+    let productDiscountValue = 0;
+    let flashSaleId: number | undefined;
+    let productDiscountId: number | undefined;
+
+    // Check for active flash sale first (priority 1)
+    if (
+      item.product.flashSaleItem &&
+      item.product.flashSaleItem.flashSale.isActive
+    ) {
+      const flashSale = item.product.flashSaleItem;
+      const flashSaleStatus = await prisma.flashSale.findFirst({
+        where: {
+          id: flashSale.flashSaleId,
+          status: "ACTIVE",
+          isActive: true,
+          startsAt: { lte: new Date() },
+          endsAt: { gte: new Date() },
+        },
+      });
+
+      if (flashSaleStatus) {
+        let salePrice = 0;
+        if (flashSale.discountType === "PERCENTAGE") {
+          let discountAmount =
+            (originalPrice * Number(flashSale.discountValue)) / 100;
+          if (flashSale.maxDiscount) {
+            discountAmount = Math.min(
+              discountAmount,
+              Number(flashSale.maxDiscount),
+            );
+          }
+          salePrice = originalPrice - discountAmount;
+          productDiscountApplied = discountAmount;
+        } else {
+          // FLAT discount
+          salePrice = originalPrice - Number(flashSale.discountValue);
+          productDiscountApplied = Number(flashSale.discountValue);
+        }
+
+        priceAfterProductDiscount = Math.max(0, salePrice);
+        productDiscountType = flashSale.discountType;
+        productDiscountValue = Number(flashSale.discountValue);
+        flashSaleId = flashSale.id;
+      }
     }
+    // If no flash sale, check for existing product discount (priority 2)
+    else if (item.product.discounts && item.product.discounts.length > 0) {
+      const productDiscount = item.product.discounts[0];
+      let discountedPrice = 0;
+
+      if (productDiscount.discountType === "PERCENTAGE") {
+        discountedPrice =
+          originalPrice -
+          (originalPrice * Number(productDiscount.discountValue)) / 100;
+        productDiscountApplied =
+          (originalPrice * Number(productDiscount.discountValue)) / 100;
+      } else {
+        discountedPrice = originalPrice - Number(productDiscount.discountValue);
+        productDiscountApplied = Number(productDiscount.discountValue);
+      }
+
+      priceAfterProductDiscount = Math.max(0, discountedPrice);
+      productDiscountType = productDiscount.discountType;
+      productDiscountValue = Number(productDiscount.discountValue);
+      productDiscountId = productDiscount.id;
+    }
+
+    const itemTotalProductDiscount = productDiscountApplied * item.quantity;
+    const itemTotalAfterProductDiscount =
+      priceAfterProductDiscount * item.quantity;
+
+    totalProductDiscount += itemTotalProductDiscount;
+    totalAfterProductDiscount += itemTotalAfterProductDiscount;
+
+    processedItems.push({
+      cartItem: item,
+      originalPrice,
+      productDiscountPrice: priceAfterProductDiscount,
+      productDiscountApplied,
+      productDiscountType,
+      productDiscountValue,
+      flashSaleId,
+      productDiscountId,
+    });
   }
 
-  if (issues.length > 0) {
+  if (issues.length)
     throw new AppError(
       httpStatus.BAD_REQUEST,
       `Cart has issues: ${issues.join(", ")}`,
     );
+
+  // ── Group items by vendorId ────────────────────────────
+  const itemsByVendor = new Map<number | null, typeof processedItems>();
+  for (const item of processedItems) {
+    const vid = item.cartItem.product.vendorId ?? null;
+    if (!itemsByVendor.has(vid)) itemsByVendor.set(vid, []);
+    itemsByVendor.get(vid)!.push(item);
   }
 
-  // calculate subtotal
-  const subtotal = user.cart.items.reduce(
-    (sum, item) => sum + Number(item.variant.price) * item.quantity,
-    0,
-  );
+  // ── Calculate vendor subtotals after product discounts ──
+  const vendorSubtotals = new Map<number | null, number>();
+  for (const [vendorId, items] of itemsByVendor) {
+    const vendorSubtotal = items.reduce(
+      (sum, item) => sum + item.productDiscountPrice * item.cartItem.quantity,
+      0,
+    );
+    vendorSubtotals.set(vendorId, vendorSubtotal);
+  }
 
-  // apply coupon if provided
-  let discount = 0;
+  // ── Apply coupon discount on total after product discounts ──
+  let totalCouponDiscount = 0;
   let couponId: number | null = null;
+  let couponDetails: any = null;
 
   if (payload.couponCode) {
     const couponResult = await validateCouponForUser(
       payload.couponCode,
       user.id,
-      subtotal,
+      totalAfterProductDiscount,
     );
-    discount = couponResult.discountAmount;
+    totalCouponDiscount = couponResult.discountAmount;
     couponId = couponResult.coupon.id;
+    couponDetails = couponResult.coupon;
   }
 
-  const shippingFee = billingAddress
-    ? billingAddress.city_district?.toLowerCase() === "dhaka"
-      ? 60
-      : 120
-    : shippingAddress?.city_district?.toLowerCase() === "dhaka"
-      ? 60
-      : 120;
+  // ── Calculate shipping fee ────────────────────────────
+  const addressCity = (shippingAddress.city_district ?? "").toLowerCase();
+  const baseShippingFee = addressCity === "dhaka" ? 70 : 130;
 
-  const tax = 0; // extend when needed
-  const total = subtotal - discount + shippingFee + tax;
+  // If client provided shipping fee, use it (split between vendors)
+  const shippingFeePerVendor = payload.shippingFeeFromClient
+    ? payload.shippingFeeFromClient / itemsByVendor.size
+    : baseShippingFee;
 
-  // create order in transaction
-  const order = await prisma.$transaction(async (tx) => {
-    const orderNumber = generateOrderNumber();
+  // ── Create one order per vendor in a single transaction ─
+  const createdOrders = await prisma.$transaction(async (tx) => {
+    const orders: any[] = [];
 
-    const created = await tx.order.create({
-      data: {
-        userId: user.id,
-        orderNumber,
-        shippingAddressId: payload.shippingAddressId,
-        billingAddressId: payload.billingAddressId ?? null,
-        status: "PENDING",
-        subtotal,
-        shippingFee,
-        discount,
-        tax,
-        total,
-        couponId,
-        notes: payload.notes ?? null,
-      },
-    });
+    for (const [vendorId, items] of itemsByVendor) {
+      const vendorSubtotal = vendorSubtotals.get(vendorId) || 0;
 
-    // create order items with snapshot
-    await tx.orderItem.createMany({
-      data: user.cart!.items.map((item) => ({
-        orderId: created.id,
-        productId: item.productId,
-        variantId: item.variantId,
-        quantity: item.quantity,
-        unitPrice: item.variant.price,
-        totalPrice: Number(item.variant.price) * item.quantity,
-        snapshot: {
-          productName: item.product.name,
-          productSlug: item.product.slug,
-          variantName: item.variant.name,
-          variantSku: item.variant.sku,
-          price: item.variant.price,
-          comparePrice: item.variant.comparePrice,
-        },
-      })),
-    });
+      // Proportional coupon discount for this vendor's share
+      const vendorCouponDiscount =
+        totalAfterProductDiscount > 0
+          ? (vendorSubtotal / totalAfterProductDiscount) * totalCouponDiscount
+          : 0;
 
-    // deduct stock for each variant
-    for (const item of user.cart!.items) {
-      await tx.productVariant.update({
-        where: { id: item.variantId },
-        data: { stock: { decrement: item.quantity } },
-      });
+      // Calculate totals
+      const vendorTotalAfterProductDiscount = vendorSubtotal;
+      const vendorTotalAfterCoupon = vendorSubtotal - vendorCouponDiscount;
+      const vendorGrandTotal = vendorTotalAfterCoupon + shippingFeePerVendor;
 
-      // log inventory change
-      await tx.inventoryLog.create({
+      // Create order
+      const order = await tx.order.create({
         data: {
-          variantId: item.variantId,
-          change: -item.quantity,
-          reason: "SALE",
-          referenceId: created.id,
+          userId: user.id,
+          orderNumber: generateOrderNumber(),
+          shippingAddressId: payload.shippingAddressId,
+          billingAddressId: payload.billingAddressId ?? null,
+          status: "PENDING",
+          subtotal: vendorSubtotal, // After product discounts, before coupon and shipping
+          shippingFee: shippingFeePerVendor,
+          discount: vendorCouponDiscount, // Only coupon discount (product discounts are in subtotal)
+          tax: 0,
+          total: Math.max(0, vendorGrandTotal),
+          couponId,
+          notes: payload.notes ?? null,
         },
       });
 
-      // increment product totalSold
-      await tx.product.update({
-        where: { id: item.productId },
-        data: { totalSold: { increment: item.quantity } },
+      // Create order items with complete discount breakdown
+      for (const item of items) {
+        const cartItem = item.cartItem;
+        const finalUnitPrice = item.productDiscountPrice;
+        const totalPrice = finalUnitPrice * cartItem.quantity;
+
+        await tx.orderItem.create({
+          data: {
+            orderId: order.id,
+            productId: cartItem.productId,
+            variantId: cartItem.variantId,
+            quantity: cartItem.quantity,
+            unitPrice: finalUnitPrice,
+            totalPrice: totalPrice,
+            snapshot: {
+              // Product info
+              productName: cartItem.product.name,
+              productSlug: cartItem.product.slug,
+              variantName: cartItem.variant.name,
+              variantSku: cartItem.variant.sku,
+              vendorName: cartItem.product.vendor?.storeName ?? null,
+
+              // Pricing breakdown
+              originalPrice: item.originalPrice,
+              discountedPrice: item.productDiscountPrice,
+              discountApplied: item.productDiscountApplied,
+              discountType: item.productDiscountType,
+              discountValue: item.productDiscountValue,
+
+              // Discount sources
+              flashSaleId: item.flashSaleId,
+              productDiscountId: item.productDiscountId,
+
+              // Timestamp
+              appliedAt: new Date().toISOString(),
+            },
+          },
+        });
+
+        // Deduct stock
+        await tx.productVariant.update({
+          where: { id: cartItem.variantId },
+          data: { stock: { decrement: cartItem.quantity } },
+        });
+
+        // Inventory log
+        await tx.inventoryLog.create({
+          data: {
+            variantId: cartItem.variantId,
+            change: -cartItem.quantity,
+            reason: "SALE",
+            referenceId: order.id,
+          },
+        });
+
+        // Update product total sold
+        await tx.product.update({
+          where: { id: cartItem.productId },
+          data: { totalSold: { increment: cartItem.quantity } },
+        });
+
+        // Update flash sale sold count if applicable
+        if (item.flashSaleId) {
+          await tx.flashSaleItem.update({
+            where: { id: item.flashSaleId },
+            data: { soldCount: { increment: cartItem.quantity } },
+          });
+        }
+      }
+
+      // Order status history
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          status: "PENDING",
+          note: "Order placed successfully",
+        },
       });
+
+      orders.push(order);
     }
 
-    // record coupon usage
-    if (couponId) {
+    // ── Coupon usage (only once per checkout) ──────────────
+    if (couponId && createdOrders.length > 0) {
       await tx.couponUsage.create({
         data: {
           couponId,
           userId: user.id,
-          orderId: created.id,
+          orderId: createdOrders[0].id,
         },
       });
-
       await tx.coupon.update({
         where: { id: couponId },
         data: { usedCount: { increment: 1 } },
       });
     }
 
-    // add initial status history
-    await tx.orderStatusHistory.create({
-      data: {
-        orderId: created.id,
-        status: "PENDING",
-        note: "Order placed successfully",
-      },
-    });
+    // ── Clear cart ─────────────────────────────────────────
+    await tx.cartItem.deleteMany({ where: { cartId: user.cart!.id } });
 
-    // clear cart
-    await tx.cartItem.deleteMany({
-      where: { cartId: user.cart!.id },
-    });
-
-    return created;
+    return orders;
   });
 
-  // return order with full details
-  return getOrderById(order.id, user.id, false);
+  // Return each order with full details
+  const detailed = await Promise.all(
+    createdOrders.map((o) => getOrderById(o.id, user.id, false)),
+  );
+
+  // Calculate final summary
+  const shippingTotal = shippingFeePerVendor * itemsByVendor.size;
+  const totalAfterAllDiscounts =
+    totalAfterProductDiscount - totalCouponDiscount;
+  const grandTotalWithShipping = totalAfterAllDiscounts + shippingTotal;
+
+  return {
+    orders: detailed,
+    orderCount: detailed.length,
+    vendorCount: itemsByVendor.size,
+    grandTotal: grandTotalWithShipping,
+    breakdown: {
+      subtotal: {
+        original: processedItems.reduce(
+          (sum, item) => sum + item.originalPrice * item.cartItem.quantity,
+          0,
+        ),
+        afterProductDiscount: totalAfterProductDiscount,
+      },
+      discounts: {
+        productDiscount: totalProductDiscount,
+        couponDiscount: totalCouponDiscount,
+        totalDiscount: totalProductDiscount + totalCouponDiscount,
+      },
+      shipping: shippingTotal,
+      total: grandTotalWithShipping,
+    },
+    message:
+      itemsByVendor.size === 1
+        ? "Order placed successfully"
+        : `Orders placed with ${itemsByVendor.size} vendors successfully`,
+  };
+};
+
+// Helper function to validate coupon (existing implementation)
+const validateCouponForUser = async (
+  code: string,
+  userId: number,
+  orderAmount: number,
+) => {
+  const coupon = await prisma.coupon.findFirst({
+    where: {
+      code,
+      isActive: true,
+      startsAt: { lte: new Date() },
+      expiresAt: { gte: new Date() },
+      OR: [
+        { usageLimit: null },
+        { usedCount: { lt: prisma.coupon.fields.usageLimit } },
+      ],
+    },
+  });
+
+  if (!coupon) {
+    throw new AppError(httpStatus.BAD_REQUEST, "Invalid or expired coupon");
+  }
+
+  if (coupon.minOrderAmount && orderAmount < Number(coupon.minOrderAmount)) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      `Minimum order amount of ${coupon.minOrderAmount} required for this coupon`,
+    );
+  }
+
+  // Check per-user usage
+  const userUsageCount = await prisma.couponUsage.count({
+    where: { couponId: coupon.id, userId },
+  });
+
+  if (userUsageCount >= coupon.perUserLimit) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "You have already used this coupon maximum number of times",
+    );
+  }
+
+  let discountAmount = 0;
+  if (coupon.discountType === "PERCENTAGE") {
+    discountAmount = (orderAmount * Number(coupon.discountValue)) / 100;
+    if (coupon.maxDiscount) {
+      discountAmount = Math.min(discountAmount, Number(coupon.maxDiscount));
+    }
+  } else {
+    discountAmount = Number(coupon.discountValue);
+  }
+
+  return {
+    coupon,
+    discountAmount: Math.min(discountAmount, orderAmount),
+  };
 };
 
 // get all orders — admin
@@ -537,6 +795,36 @@ const getVendorOrders = async (
   };
 };
 
+// ─────────────────────────────────────────
+// getMyVendorOrders — for vendor dashboard
+// derives vendorId from auth token (no URL param)
+// ─────────────────────────────────────────
+const getMyVendorOrders = async (
+  email: string,
+  query: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    search?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    minAmount?: number;
+    maxAmount?: number;
+  },
+) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+    include: { vendorProfile: true },
+  });
+
+  if (!user) throw new AppError(httpStatus.NOT_FOUND, "User not found");
+
+  if (!user.vendorProfile)
+    throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
+  console.log(user.vendorProfile.id);
+  return getVendorOrders(user.vendorProfile.id, query);
+};
+
 // get my orders — customer
 const getMyOrders = async (
   email: string,
@@ -705,93 +993,7 @@ const getMyOrderByNumber = async (email: string, orderNumber: string) => {
   return getOrderById(order.id, user.id, true);
 };
 
-// // cancel order — customer
-// const cancelOrder = async (
-//   email: string,
-//   orderId: number,
-//   cancelReason: string,
-// ) => {
-//   const user = await prisma.user.findUnique({
-//     where: { email, isActive: true },
-//   });
-
-//   if (!user) {
-//     throw new AppError(httpStatus.NOT_FOUND, "User not found");
-//   }
-
-//   const order = await prisma.order.findFirst({
-//     where: { id: orderId, userId: user.id },
-//     include: { items: true },
-//   });
-
-//   if (!order) {
-//     throw new AppError(httpStatus.NOT_FOUND, "Order not found");
-//   }
-
-//   // only pending or confirmed can be cancelled by customer
-//   if (!["PENDING", "CONFIRMED"].includes(order.status)) {
-//     throw new AppError(
-//       httpStatus.BAD_REQUEST,
-//       `Order cannot be cancelled at "${order.status}" stage`,
-//     );
-//   }
-
-//   await prisma.$transaction(async (tx) => {
-//     // update order status
-//     await tx.order.update({
-//       where: { id: orderId },
-//       data: { status: "CANCELLED", cancelReason },
-//     });
-
-//     // restore stock
-//     for (const item of order.items) {
-//       await tx.productVariant.update({
-//         where: { id: item.variantId },
-//         data: { stock: { increment: item.quantity } },
-//       });
-
-//       await tx.inventoryLog.create({
-//         data: {
-//           variantId: item.variantId,
-//           change: item.quantity,
-//           reason: "CANCELLATION",
-//           referenceId: orderId,
-//         },
-//       });
-
-//       // decrement totalSold
-//       await tx.product.update({
-//         where: { id: item.productId },
-//         data: { totalSold: { decrement: item.quantity } },
-//       });
-//     }
-
-//     // reverse coupon usage if applied
-//     if (order.couponId) {
-//       await tx.coupon.update({
-//         where: { id: order.couponId },
-//         data: { usedCount: { decrement: 1 } },
-//       });
-
-//       await tx.couponUsage.deleteMany({
-//         where: { couponId: order.couponId, orderId },
-//       });
-//     }
-
-//     // add status history
-//     await tx.orderStatusHistory.create({
-//       data: {
-//         orderId,
-//         status: "CANCELLED",
-//         note: cancelReason,
-//       },
-//     });
-//   });
-
-//   return "Order cancelled successfully";
-// };
-
-// cancel order — customer/vendor
+// cancel order — customer
 const cancelOrder = async (
   email: string,
   orderId: number,
@@ -799,7 +1001,6 @@ const cancelOrder = async (
 ) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
-    include: { vendorProfile: true },
   });
 
   if (!user) {
@@ -808,177 +1009,74 @@ const cancelOrder = async (
 
   const order = await prisma.order.findFirst({
     where: { id: orderId, userId: user.id },
-    include: { items: { include: { product: true, variant: true } } },
+    include: { items: true },
   });
 
   if (!order) {
     throw new AppError(httpStatus.NOT_FOUND, "Order not found");
   }
 
-  // For VENDOR role: check if vendor owns any items in this order
-  let vendorItems: typeof order.items = [];
-  let isVendorCancelling = false;
-
-  if (user.role === "VENDOR" && user.vendorProfile) {
-    vendorItems = order.items.filter(
-      (item) => item.product.vendorId === user.vendorProfile?.id,
+  // only pending or confirmed can be cancelled by customer
+  if (!["PENDING", "CONFIRMED"].includes(order.status)) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      `Order cannot be cancelled at "${order.status}" stage`,
     );
-
-    if (vendorItems.length === 0) {
-      throw new AppError(
-        httpStatus.FORBIDDEN,
-        "No items from your store in this order",
-      );
-    }
-
-    isVendorCancelling = true;
-  }
-
-  // Check if user is customer cancelling their own order
-  if (user.role === "CUSTOMER") {
-    // only pending or confirmed can be cancelled by customer
-    if (!["PENDING", "CONFIRMED"].includes(order.status)) {
-      throw new AppError(
-        httpStatus.BAD_REQUEST,
-        `Order cannot be cancelled at "${order.status}" stage`,
-      );
-    }
-  }
-
-  // For vendor cancellation, check if items can be cancelled
-  if (isVendorCancelling) {
-    const cancellableStatuses = ["PENDING", "CONFIRMED", "PROCESSING"];
-    if (!cancellableStatuses.includes(order.status)) {
-      throw new AppError(
-        httpStatus.BAD_REQUEST,
-        `Cannot cancel items when order is at "${order.status}" stage`,
-      );
-    }
   }
 
   await prisma.$transaction(async (tx) => {
-    if (isVendorCancelling) {
-      // Cancel only vendor's items
-      for (const item of vendorItems) {
-        // Restore stock
-        await tx.productVariant.update({
-          where: { id: item.variantId },
-          data: { stock: { increment: item.quantity } },
-        });
+    // update order status
+    await tx.order.update({
+      where: { id: orderId },
+      data: { status: "CANCELLED", cancelReason },
+    });
 
-        // Inventory log
-        await tx.inventoryLog.create({
-          data: {
-            variantId: item.variantId,
-            change: item.quantity,
-            reason: "VENDOR_CANCELLATION",
-            referenceId: orderId,
-          },
-        });
-
-        // Decrement totalSold
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { totalSold: { decrement: item.quantity } },
-        });
-      }
-
-      // Check if all items in order are cancelled
-      const remainingItems = await tx.orderItem.findMany({
-        where: {
-          orderId: orderId,
-          orderItemStatus: { not: "CANCELLED" },
-        },
+    // restore stock
+    for (const item of order.items) {
+      await tx.productVariant.update({
+        where: { id: item.variantId },
+        data: { stock: { increment: item.quantity } },
       });
 
-      // If no items left, cancel the entire order
-      if (remainingItems.length === 0) {
-        await tx.order.update({
-          where: { id: orderId },
-          data: {
-            status: "CANCELLED",
-            cancelReason: `All items cancelled by vendor. ${cancelReason}`,
-          },
-        });
-
-        // Reverse coupon usage if applicable
-        if (order.couponId) {
-          await tx.coupon.update({
-            where: { id: order.couponId },
-            data: { usedCount: { decrement: 1 } },
-          });
-
-          await tx.couponUsage.deleteMany({
-            where: { couponId: order.couponId, orderId },
-          });
-        }
-      }
-
-      // Add status history
-      await tx.orderStatusHistory.create({
+      await tx.inventoryLog.create({
         data: {
-          orderId,
-          status: order.status,
-          note: `Vendor cancelled items: ${vendorItems.map((i) => i.product.name).join(", ")}. Reason: ${cancelReason}`,
-          statusUpdatedById: user.id,
+          variantId: item.variantId,
+          change: item.quantity,
+          reason: "CANCELLATION",
+          referenceId: orderId,
         },
       });
-    } else {
-      // Customer cancelling entire order
-      await tx.order.update({
-        where: { id: orderId },
-        data: { status: "CANCELLED", cancelReason },
-      });
 
-      // Restore stock for all items
-      for (const item of order.items) {
-        await tx.productVariant.update({
-          where: { id: item.variantId },
-          data: { stock: { increment: item.quantity } },
-        });
-
-        await tx.inventoryLog.create({
-          data: {
-            variantId: item.variantId,
-            change: item.quantity,
-            reason: "CANCELLATION",
-            referenceId: orderId,
-          },
-        });
-
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { totalSold: { decrement: item.quantity } },
-        });
-      }
-
-      // Reverse coupon usage if applied
-      if (order.couponId) {
-        await tx.coupon.update({
-          where: { id: order.couponId },
-          data: { usedCount: { decrement: 1 } },
-        });
-
-        await tx.couponUsage.deleteMany({
-          where: { couponId: order.couponId, orderId },
-        });
-      }
-
-      // Add status history
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId,
-          status: "CANCELLED",
-          note: cancelReason,
-          statusUpdatedById: user.id,
-        },
+      // decrement totalSold
+      await tx.product.update({
+        where: { id: item.productId },
+        data: { totalSold: { decrement: item.quantity } },
       });
     }
+
+    // reverse coupon usage if applied
+    if (order.couponId) {
+      await tx.coupon.update({
+        where: { id: order.couponId },
+        data: { usedCount: { decrement: 1 } },
+      });
+
+      await tx.couponUsage.deleteMany({
+        where: { couponId: order.couponId, orderId },
+      });
+    }
+
+    // add status history
+    await tx.orderStatusHistory.create({
+      data: {
+        orderId,
+        status: "CANCELLED",
+        note: cancelReason,
+      },
+    });
   });
 
-  return isVendorCancelling
-    ? `${vendorItems.length} item(s) cancelled successfully`
-    : "Order cancelled successfully";
+  return "Order cancelled successfully";
 };
 
 // update order status — admin
@@ -1305,6 +1403,7 @@ export const orderService = {
   createOrder,
   getAllOrders,
   getVendorOrders,
+  getMyVendorOrders,
   getMyOrders,
   getMyOrderById,
   getMyOrderByNumber,

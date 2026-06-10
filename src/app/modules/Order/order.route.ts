@@ -90,8 +90,14 @@ router.patch(
 
 // vendor
 router.get(
-  "/vendor-products/:vendorId",
+  "/vendor-orders/:vendorId",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   OrderController.getVendorOrders,
+);
+
+router.get(
+  "/vendor/my-orders",
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
+  OrderController.getMyVendorOrders,
 );
 export const orderRouter = router;
