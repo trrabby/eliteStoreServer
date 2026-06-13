@@ -24,6 +24,24 @@ router.get(
   ShipmentController.getShipmentByOrderId,
 );
 
+// vendor and admin
+
+router.post(
+  "/",
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
+  multerUpload.none(),
+  validateRequestFormdata(shipmentValidation.createShipment),
+  ShipmentController.createShipment,
+);
+
+router.patch(
+  "/:id",
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
+  multerUpload.none(),
+  validateRequestFormdata(shipmentValidation.updateShipment),
+  ShipmentController.updateShipment,
+);
+
 // ─────────────────────────────────────────
 // ADMIN ONLY — manual shipment
 // ─────────────────────────────────────────
@@ -40,29 +58,19 @@ router.get(
   ShipmentController.getAllShipments,
 );
 
-router.post(
-  "/",
-  auth(Role.ADMIN, Role.SUPER_ADMIN),
-  multerUpload.none(),
-  validateRequestFormdata(shipmentValidation.createShipment),
-  ShipmentController.createShipment,
+// Vendor (and admin) shipments
+router.get(
+  "/vendor",
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
+  ShipmentController.getVendorShipments,
 );
-
-router.patch(
-  "/:id",
-  auth(Role.ADMIN, Role.SUPER_ADMIN),
-  multerUpload.none(),
-  validateRequestFormdata(shipmentValidation.updateShipment),
-  ShipmentController.updateShipment,
-);
-
 // ─────────────────────────────────────────
-// ADMIN ONLY — bulk status updates
+// ADMIN and Vendor — bulk status updates
 // ─────────────────────────────────────────
 
 router.patch(
   "/bulk/out-for-delivery",
-  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(shipmentValidation.markOutForDelivery),
   ShipmentController.markOutForDelivery,
@@ -70,19 +78,19 @@ router.patch(
 
 router.patch(
   "/bulk/delivered",
-  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(shipmentValidation.markDelivered),
   ShipmentController.markDelivered,
 );
 
 // ─────────────────────────────────────────
-// ADMIN ONLY — Steadfast
+// ADMIN and Vendors — Steadfast
 // ─────────────────────────────────────────
 
 router.post(
   "/steadfast/bulk-create",
-  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(shipmentValidation.steadfastBulkCreate),
   ShipmentController.createSteadfastShipments,
@@ -90,7 +98,7 @@ router.post(
 
 router.post(
   "/steadfast/sync-status",
-  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(shipmentValidation.steadfastSyncStatus),
   ShipmentController.syncSteadfastStatuses,

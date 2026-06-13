@@ -13,7 +13,7 @@ import {
 // SERVICES
 // ─────────────────────────────────────────
 
-// create manual shipment — admin
+// create manual shipment — admin/vendor
 const createShipment = async (
   email: string,
   payload: {
@@ -26,19 +26,47 @@ const createShipment = async (
 ) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
+    include: { vendorProfile: true },
   });
   if (!user) {
     throw new AppError(httpStatus.NOT_FOUND, "User not found");
   }
+
   const order = await prisma.order.findUnique({
     where: { id: payload.orderId },
-    include: { shipment: true, payment: true },
+    include: {
+      shipment: true,
+      payment: true,
+      items: {
+        include: { product: true },
+      },
+    },
   });
 
   if (!order) {
     throw new AppError(httpStatus.NOT_FOUND, "Order not found");
   }
 
+  // ── Vendor permission check ──────────────────────────────
+  if (user.role === "VENDOR") {
+    if (!user.vendorProfile) {
+      throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
+    }
+    const vendorId = user.vendorProfile.id;
+
+    // Verify all items in this order belong to this vendor
+    const allItemsBelongToVendor = order.items.every(
+      (item) => item.product.vendorId === vendorId,
+    );
+    if (!allItemsBelongToVendor) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        "You can only create shipments for orders that contain only your products.",
+      );
+    }
+  }
+
+  // ── Status validation ────────────────────────────────────
   if (!["CONFIRMED", "PROCESSING"].includes(order.status)) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
@@ -46,6 +74,7 @@ const createShipment = async (
     );
   }
 
+  // ── Payment validation ────────────────────────────────────
   if (
     order.payment &&
     order.payment.method !== "CASH_ON_DELIVERY" &&
@@ -63,6 +92,7 @@ const createShipment = async (
     );
   }
 
+  // ── Duplicate shipment check ─────────────────────────────
   if (order.shipment) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
@@ -73,7 +103,6 @@ const createShipment = async (
   const trackingExists = await prisma.shipment.findFirst({
     where: { trackingNumber: payload.trackingNumber },
   });
-
   if (trackingExists) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
@@ -81,6 +110,7 @@ const createShipment = async (
     );
   }
 
+  // ── Create shipment in transaction ───────────────────────
   const shipment = await prisma.$transaction(async (tx) => {
     const created = await tx.shipment.create({
       data: {
@@ -94,11 +124,13 @@ const createShipment = async (
       },
     });
 
+    // Update order status to SHIPPED
     await tx.order.update({
       where: { id: payload.orderId },
       data: { status: "SHIPPED", statusUpdatedById: user.id },
     });
 
+    // Add status history
     await tx.orderStatusHistory.create({
       data: {
         orderId: payload.orderId,
@@ -118,10 +150,11 @@ const createShipment = async (
 // STEADFAST
 // ─────────────────────────────────────────
 
-// send bulk orders to steadfast
+// send bulk orders to steadfast — admin/vendor
 const createSteadfastShipments = async (email: string, orderIds: number[]) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
+    include: { vendorProfile: true },
   });
 
   if (!user) {
@@ -138,6 +171,9 @@ const createSteadfastShipments = async (email: string, orderIds: number[]) => {
       shipment: true,
       shippingAddress: true,
       payment: true,
+      items: {
+        include: { product: true },
+      },
       user: {
         select: {
           phone: true,
@@ -154,6 +190,26 @@ const createSteadfastShipments = async (email: string, orderIds: number[]) => {
       httpStatus.BAD_REQUEST,
       "No eligible orders found. Orders must be CONFIRMED or PROCESSING.",
     );
+  }
+
+  // ── Vendor permission check ──────────────────────────────
+  if (user.role === "VENDOR") {
+    if (!user.vendorProfile) {
+      throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
+    }
+    const vendorId = user.vendorProfile.id;
+
+    for (const order of orders) {
+      const allItemsBelongToVendor = order.items.every(
+        (item) => item.product.vendorId === vendorId,
+      );
+      if (!allItemsBelongToVendor) {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          `Order ${order.orderNumber} contains products from other vendors. You can only bulk-ship orders that contain only your products.`,
+        );
+      }
+    }
   }
 
   // separate already shipped orders
@@ -216,8 +272,8 @@ const createSteadfastShipments = async (email: string, orderIds: number[]) => {
         data: {
           orderId: order.id,
           carrier: "Steadfast",
-          trackingNumber: String(item.consignment_id), // ensure string
-          trackingUrl: (item as any)?.tracking_link, // ✅ use real link
+          trackingNumber: String(item.consignment_id),
+          trackingUrl: (item as any)?.tracking_link,
           createdById: user.id,
           shippedAt: new Date(),
         },
@@ -411,10 +467,11 @@ const getSteadfastAccountBalance = async () => {
 // BULK STATUS UPDATES
 // ─────────────────────────────────────────
 
-// mark multiple shipments as out for delivery
+// mark multiple shipments as out for delivery — admin/vendor
 const markOutForDelivery = async (email: string, shipmentIds: number[]) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
+    include: { vendorProfile: true },
   });
 
   if (!user) {
@@ -423,11 +480,37 @@ const markOutForDelivery = async (email: string, shipmentIds: number[]) => {
 
   const shipments = await prisma.shipment.findMany({
     where: { id: { in: shipmentIds } },
-    include: { order: true },
+    include: {
+      order: {
+        include: {
+          items: { include: { product: true } },
+        },
+      },
+    },
   });
 
   if (!shipments.length) {
     throw new AppError(httpStatus.NOT_FOUND, "No shipments found");
+  }
+
+  // ── Vendor permission check ──────────────────────────────
+  if (user.role === "VENDOR") {
+    if (!user.vendorProfile) {
+      throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
+    }
+    const vendorId = user.vendorProfile.id;
+
+    for (const shipment of shipments) {
+      const allItemsBelongToVendor = shipment.order.items.every(
+        (item) => item.product.vendorId === vendorId,
+      );
+      if (!allItemsBelongToVendor) {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          `Order ${shipment.order.orderNumber} contains products from other vendors. You can only update shipments for orders that contain only your products.`,
+        );
+      }
+    }
   }
 
   const results = {
@@ -475,7 +558,7 @@ const markOutForDelivery = async (email: string, shipmentIds: number[]) => {
   };
 };
 
-// mark multiple shipments as delivered
+// mark multiple shipments as delivered — admin/vendor
 const markDelivered = async (
   email: string,
   shipmentIds: number[],
@@ -483,6 +566,7 @@ const markDelivered = async (
 ) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
+    include: { vendorProfile: true },
   });
 
   if (!user) {
@@ -491,11 +575,38 @@ const markDelivered = async (
 
   const shipments = await prisma.shipment.findMany({
     where: { id: { in: shipmentIds } },
-    include: { order: { include: { payment: true } } },
+    include: {
+      order: {
+        include: {
+          items: { include: { product: true } },
+          payment: true,
+        },
+      },
+    },
   });
 
   if (!shipments.length) {
     throw new AppError(httpStatus.NOT_FOUND, "No shipments found");
+  }
+
+  // ── Vendor permission check ──────────────────────────────
+  if (user.role === "VENDOR") {
+    if (!user.vendorProfile) {
+      throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
+    }
+    const vendorId = user.vendorProfile.id;
+
+    for (const shipment of shipments) {
+      const allItemsBelongToVendor = shipment.order.items.every(
+        (item) => item.product.vendorId === vendorId,
+      );
+      if (!allItemsBelongToVendor) {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          `Order ${shipment.order.orderNumber} contains products from other vendors. You can only update shipments for orders that contain only your products.`,
+        );
+      }
+    }
   }
 
   const deliveryDate = deliveredAt ? new Date(deliveredAt) : new Date();
@@ -542,7 +653,6 @@ const markDelivered = async (
 
       // COD payment confirmation on delivery
       const codPayment = shipment.order.payment;
-
       if (
         codPayment &&
         codPayment.method === "CASH_ON_DELIVERY" &&
@@ -575,9 +685,10 @@ const markDelivered = async (
 // READ SERVICES
 // ─────────────────────────────────────────
 
-const getShipmentByOrderId = async (orderId: number, email: string) => {
+const getShipmentByOrderId = async (email: string, orderId: number) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
+    include: { vendorProfile: true },
   });
 
   if (!user) {
@@ -585,16 +696,37 @@ const getShipmentByOrderId = async (orderId: number, email: string) => {
   }
 
   const isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
+  const isVendor = user.role === "VENDOR" && user.vendorProfile;
+
+  // Build order where clause
+  let orderWhere: any = { id: orderId };
+  if (!isAdmin && !isVendor) {
+    // Customer: only their own orders
+    orderWhere.userId = user.id;
+  }
 
   const order = await prisma.order.findFirst({
-    where: {
-      id: orderId,
-      ...(!isAdmin && { userId: user.id }),
+    where: orderWhere,
+    include: {
+      items: { include: { product: true } }, // needed for vendor check
     },
   });
 
   if (!order) {
     throw new AppError(httpStatus.NOT_FOUND, "Order not found");
+  }
+
+  // Vendor permission check: ensure all items belong to vendor
+  if (isVendor) {
+    const allItemsBelongToVendor = order.items.every(
+      (item) => item.product.vendorId === user.vendorProfile!.id,
+    );
+    if (!allItemsBelongToVendor) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        "You can only view shipments for orders that contain only your products.",
+      );
+    }
   }
 
   const shipment = await prisma.shipment.findUnique({
@@ -746,7 +878,107 @@ const getAllShipments = async (query: {
   return { total, page, limit, shipments };
 };
 
+// get all shipments for vendor's orders — vendor
+const getVendorShipments = async (
+  email: string,
+  query: {
+    page?: number;
+    limit?: number;
+    carrier?: string;
+    search?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  },
+) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+    include: { vendorProfile: true },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  if (user.role !== "VENDOR" || !user.vendorProfile) {
+    throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
+  }
+
+  const vendorId = user.vendorProfile.id;
+  const page = query.page ?? 1;
+  const limit = query.limit ?? 20;
+  const skip = (page - 1) * limit;
+
+  const where: any = {
+    order: {
+      items: {
+        every: { product: { vendorId } },
+      },
+    },
+  };
+
+  if (query.carrier) {
+    where.carrier = { contains: query.carrier, mode: "insensitive" };
+  }
+
+  if (query.search) {
+    where.OR = [
+      { trackingNumber: { contains: query.search, mode: "insensitive" } },
+      {
+        order: {
+          orderNumber: { contains: query.search, mode: "insensitive" },
+        },
+      },
+    ];
+  }
+
+  if (query.dateFrom || query.dateTo) {
+    where.shippedAt = {
+      ...(query.dateFrom && { gte: new Date(query.dateFrom) }),
+      ...(query.dateTo && { lte: new Date(query.dateTo) }),
+    };
+  }
+
+  const [shipments, total] = await Promise.all([
+    prisma.shipment.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        carrier: true,
+        trackingNumber: true,
+        trackingUrl: true,
+        shippedAt: true,
+        estimatedAt: true,
+        deliveredAt: true,
+        createdAt: true,
+        order: {
+          select: {
+            orderNumber: true,
+            status: true,
+            user: {
+              select: {
+                email: true,
+                accountInfo: {
+                  select: { firstName: true, lastName: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.shipment.count({ where }),
+  ]);
+
+  return { total, page, limit, shipments };
+};
+
+// update shipment — admin/vendor
+
 const updateShipment = async (
+  email: string,
   shipmentId: number,
   payload: {
     carrier?: string;
@@ -755,14 +987,49 @@ const updateShipment = async (
     estimatedAt?: string;
   },
 ) => {
+  const user = await prisma.user.findUnique({
+    where: { email, isActive: true },
+    include: { vendorProfile: true },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
   const shipment = await prisma.shipment.findUnique({
     where: { id: shipmentId },
+    include: {
+      order: {
+        include: {
+          items: { include: { product: true } },
+        },
+      },
+    },
   });
 
   if (!shipment) {
     throw new AppError(httpStatus.NOT_FOUND, "Shipment not found");
   }
 
+  // ── Vendor permission check ──────────────────────────────
+  if (user.role === "VENDOR") {
+    if (!user.vendorProfile) {
+      throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
+    }
+    const vendorId = user.vendorProfile.id;
+
+    const allItemsBelongToVendor = shipment.order.items.every(
+      (item) => item.product.vendorId === vendorId,
+    );
+    if (!allItemsBelongToVendor) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        "You can only update shipments for orders that contain only your products.",
+      );
+    }
+  }
+
+  // ── Unique tracking number check ─────────────────────────
   if (
     payload.trackingNumber &&
     payload.trackingNumber !== shipment.trackingNumber
@@ -770,7 +1037,6 @@ const updateShipment = async (
     const exists = await prisma.shipment.findFirst({
       where: { trackingNumber: payload.trackingNumber },
     });
-
     if (exists) {
       throw new AppError(
         httpStatus.BAD_REQUEST,
@@ -779,10 +1045,13 @@ const updateShipment = async (
     }
   }
 
+  // ── Update shipment ─────────────────────────────────────
   const updated = await prisma.shipment.update({
     where: { id: shipmentId },
     data: {
-      ...payload,
+      ...(payload.carrier && { carrier: payload.carrier }),
+      ...(payload.trackingNumber && { trackingNumber: payload.trackingNumber }),
+      ...(payload.trackingUrl && { trackingUrl: payload.trackingUrl }),
       ...(payload.estimatedAt && {
         estimatedAt: new Date(payload.estimatedAt),
       }),
@@ -841,6 +1110,7 @@ export const shipmentService = {
   getShipmentByOrderId,
   trackByTrackingNumber,
   getAllShipments,
+  getVendorShipments,
   updateShipment,
   markOutForDelivery,
   markDelivered,

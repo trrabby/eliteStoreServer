@@ -17,9 +17,9 @@ const generateOrderNumber = (): string => {
 const isValidStatusTransition = (current: string, next: string): boolean => {
   const transitions: Record<string, string[]> = {
     PENDING: ["CONFIRMED", "CANCELLED"],
-    CONFIRMED: ["PROCESSING", "CANCELLED"],
+    CONFIRMED: ["PROCESSING", "SHIPPED", "CANCELLED"],
     PROCESSING: ["SHIPPED", "CANCELLED"],
-    SHIPPED: ["OUT_FOR_DELIVERY"],
+    SHIPPED: ["OUT_FOR_DELIVERY", "DELIVERED"],
     OUT_FOR_DELIVERY: ["DELIVERED"],
     DELIVERED: ["RETURN_REQUESTED"],
     RETURN_REQUESTED: ["RETURNED", "DELIVERED"],
@@ -993,7 +993,7 @@ const getMyOrderByNumber = async (email: string, orderNumber: string) => {
   return getOrderById(order.id, user.id, true);
 };
 
-// cancel order — customer
+// cancel order — customer / vendor / admin
 const cancelOrder = async (
   email: string,
   orderId: number,
@@ -1001,6 +1001,7 @@ const cancelOrder = async (
 ) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
+    include: { vendorProfile: true },
   });
 
   if (!user) {
@@ -1008,30 +1009,80 @@ const cancelOrder = async (
   }
 
   const order = await prisma.order.findFirst({
-    where: { id: orderId, userId: user.id },
-    include: { items: true },
+    where: {
+      id: orderId,
+      // For customers, restrict to their own orders; for admin/vendor we'll check separately
+      ...(user.role === "CUSTOMER" ? { userId: user.id } : {}),
+    },
+    include: {
+      items: {
+        include: { product: true },
+      },
+      payment: true,
+      coupon: true,
+    },
   });
 
   if (!order) {
     throw new AppError(httpStatus.NOT_FOUND, "Order not found");
   }
 
-  // only pending or confirmed can be cancelled by customer
-  if (!["PENDING", "CONFIRMED"].includes(order.status)) {
+  // ── Role‑based permission & status checks ──────────────────────────
+  let allowedStatuses: string[] = [];
+
+  if (user.role === "CUSTOMER") {
+    allowedStatuses = ["PENDING", "CONFIRMED"];
+    // Customer already filtered by userId, no further checks needed
+  } else if (user.role === "VENDOR") {
+    if (!user.vendorProfile) {
+      throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
+    }
+    const vendorId = user.vendorProfile.id;
+
+    // Verify all items in this order belong to this vendor
+    const allItemsBelongToVendor = order.items.every(
+      (item) => item.product.vendorId === vendorId,
+    );
+    if (!allItemsBelongToVendor) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        "You can only cancel orders that contain only your products.",
+      );
+    }
+    allowedStatuses = ["PENDING", "CONFIRMED", "PROCESSING"];
+  } else if (user.role === "ADMIN" || user.role === "SUPER_ADMIN") {
+    // Admin can cancel any order regardless of status
+    allowedStatuses = [order.status]; // effectively allows any current status
+  } else {
     throw new AppError(
-      httpStatus.BAD_REQUEST,
-      `Order cannot be cancelled at "${order.status}" stage`,
+      httpStatus.FORBIDDEN,
+      "You are not allowed to cancel orders",
     );
   }
 
+  // For non‑admin, check if current status allows cancellation
+  if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
+    if (!allowedStatuses.includes(order.status)) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        `Order cannot be cancelled at "${order.status}" stage.`,
+      );
+    }
+  }
+
+  // ── Proceed with cancellation in transaction ──────────────────────
   await prisma.$transaction(async (tx) => {
-    // update order status
+    // Update order status
     await tx.order.update({
       where: { id: orderId },
-      data: { status: "CANCELLED", cancelReason },
+      data: {
+        status: "CANCELLED",
+        cancelReason,
+        statusUpdatedById: user.id,
+      },
     });
 
-    // restore stock
+    // Restore stock for all items
     for (const item of order.items) {
       await tx.productVariant.update({
         where: { id: item.variantId },
@@ -1042,19 +1093,24 @@ const cancelOrder = async (
         data: {
           variantId: item.variantId,
           change: item.quantity,
-          reason: "CANCELLATION",
+          reason:
+            user.role === "CUSTOMER"
+              ? "CUSTOMER_CANCELLATION"
+              : user.role === "VENDOR"
+                ? "VENDOR_CANCELLATION"
+                : "ADMIN_CANCELLATION",
           referenceId: orderId,
         },
       });
 
-      // decrement totalSold
+      // Decrement totalSold
       await tx.product.update({
         where: { id: item.productId },
         data: { totalSold: { decrement: item.quantity } },
       });
     }
 
-    // reverse coupon usage if applied
+    // Reverse coupon usage if applied
     if (order.couponId) {
       await tx.coupon.update({
         where: { id: order.couponId },
@@ -1066,34 +1122,45 @@ const cancelOrder = async (
       });
     }
 
-    // add status history
+    // Add status history
     await tx.orderStatusHistory.create({
       data: {
         orderId,
         status: "CANCELLED",
+        statusUpdatedById: user.id,
         note: cancelReason,
       },
     });
   });
 
-  return "Order cancelled successfully";
+  return `Order cancelled successfully by ${user.role.toLowerCase()}`;
 };
 
-// update order status — admin
+// update order status — admin/vendor
 const updateOrderStatus = async (
   email: string,
   orderId: number,
   payload: { status: string; note?: string; isPaymentReceived?: boolean },
 ) => {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { vendorProfile: true },
+  });
+
   if (!user) {
     throw new AppError(httpStatus.NOT_FOUND, "User not found");
   }
+
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
       shipment: true,
       payment: true,
+      items: {
+        include: {
+          product: true,
+        },
+      },
     },
   });
 
@@ -1101,6 +1168,34 @@ const updateOrderStatus = async (
     throw new AppError(httpStatus.NOT_FOUND, "Order not found");
   }
 
+  if (!order.payment) {
+    throw new AppError(httpStatus.NOT_ACCEPTABLE, "Payment info not provided");
+  }
+
+  // ── Vendor permission & scope check ──────────────────────────
+  if (user.role === "VENDOR") {
+    if (!user.vendorProfile) {
+      throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
+    }
+
+    // Ensure all items in this order belong to this vendor
+    const allItemsBelongToVendor = order.items.every(
+      (item) => item.product.vendorId === user.vendorProfile!.id,
+    );
+
+    if (!allItemsBelongToVendor) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        "You can only update orders that contain only your products.",
+      );
+    }
+
+    // Vendor-specific status transition restrictions (same map, but we could add extra checks)
+    // For now we reuse the same transition map as admin.
+    // Optionally, you can define a stricter map for vendors.
+  }
+
+  // ── Admin & vendor status transition validation ──────────────
   if (!isValidStatusTransition(order.status, payload.status)) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
@@ -1215,7 +1310,7 @@ const updateOrderStatus = async (
   return updated;
 };
 
-// update order status in bulk — admin
+// update order status in bulk — admin/vendor
 const updateOrderStatusBulk = async (
   email: string,
   payload: {
@@ -1226,7 +1321,10 @@ const updateOrderStatusBulk = async (
   },
 ) => {
   const { orderIds, status, note, isPaymentReceived } = payload;
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { vendorProfile: true },
+  });
 
   if (!user) {
     throw new AppError(httpStatus.NOT_FOUND, "User not found");
@@ -1237,8 +1335,31 @@ const updateOrderStatusBulk = async (
     include: {
       shipment: true,
       payment: true,
+      items: {
+        include: { product: true },
+      },
     },
   });
+
+  // ── Vendor permission: ensure all orders contain only vendor's products ──
+  if (user.role === "VENDOR") {
+    if (!user.vendorProfile) {
+      throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
+    }
+    const vendorId = user.vendorProfile.id;
+
+    for (const order of orders) {
+      const allItemsBelongToVendor = order.items.every(
+        (item) => item.product.vendorId === vendorId,
+      );
+      if (!allItemsBelongToVendor) {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          `Order ${order.orderNumber} contains products from other vendors. You can only bulk update orders that contain only your products.`,
+        );
+      }
+    }
+  }
 
   const results = {
     success: [] as any[],
@@ -1252,6 +1373,7 @@ const updateOrderStatusBulk = async (
       if (!isValidStatusTransition(order.status, status)) {
         results.skipped.push({
           orderId: order.id,
+          orderNumber: order.orderNumber,
           reason: `Invalid transition ${order.status} → ${status}`,
         });
         continue;

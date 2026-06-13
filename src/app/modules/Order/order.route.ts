@@ -63,17 +63,19 @@ router.get(
   OrderController.getAllOrders,
 );
 
+// Admin | Vendor
+
 // single order
 router.get(
   "/:id",
-  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   OrderController.getOrderByIdAdmin,
 );
 
 // update status
 router.patch(
   "/single/:id/status",
-  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(orderValidation.updateOrderStatus),
   OrderController.updateOrderStatus,
@@ -82,7 +84,7 @@ router.patch(
 // update status in bulk
 router.patch(
   "/bulk/status",
-  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(orderValidation.updateOrderStatusBulk),
   OrderController.updateOrderStatusBulk,

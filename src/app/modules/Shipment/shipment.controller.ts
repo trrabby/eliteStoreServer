@@ -91,7 +91,7 @@ const markDelivered = catchAsync(async (req, res) => {
 const getShipmentByOrderId = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
   const orderId = Number(req.params.orderId);
-  const result = await shipmentService.getShipmentByOrderId(orderId, email);
+  const result = await shipmentService.getShipmentByOrderId(email, orderId);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -129,10 +129,30 @@ const getAllShipments = catchAsync(async (req, res) => {
   });
 });
 
+const getVendorShipments = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
+  const { page, limit, carrier, search, dateFrom, dateTo } = req.query;
+  const result = await shipmentService.getVendorShipments(email, {
+    page: page ? Number(page) : undefined,
+    limit: limit ? Number(limit) : undefined,
+    carrier: carrier ? String(carrier) : undefined,
+    search: search ? String(search) : undefined,
+    dateFrom: dateFrom ? String(dateFrom) : undefined,
+    dateTo: dateTo ? String(dateTo) : undefined,
+  });
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Vendor shipments retrieved successfully",
+    data: result,
+  });
+});
+
 const updateShipment = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const shipmentId = Number(req.params.id);
   const data = JSON.parse(req.body.data);
-  const result = await shipmentService.updateShipment(shipmentId, data);
+  const result = await shipmentService.updateShipment(email, shipmentId, data);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -161,6 +181,7 @@ export const ShipmentController = {
   getShipmentByOrderId,
   trackByTrackingNumber,
   getAllShipments,
+  getVendorShipments,
   updateShipment,
   getShipmentStats,
 };
