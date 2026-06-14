@@ -69,7 +69,7 @@ router.get(
 router.get(
   "/:id",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
-  OrderController.getOrderByIdAdmin,
+  OrderController.getOrderById,
 );
 
 // update status

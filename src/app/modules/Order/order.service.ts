@@ -706,6 +706,15 @@ const getVendorOrders = async (
                   take: 1,
                   select: { url: true },
                 },
+                vendor: {
+                  select: {
+                    storeName: true,
+                    supportEmail: true,
+                    supportPhone: true,
+                    rating: true,
+                    returnPolicy: true,
+                  },
+                },
               },
             },
             variant: {
@@ -911,6 +920,15 @@ const getOrderById = async (
                 where: { isPrimary: true },
                 take: 1,
                 select: { url: true },
+              },
+              vendor: {
+                select: {
+                  storeName: true,
+                  supportEmail: true,
+                  supportPhone: true,
+                  rating: true,
+                  returnPolicy: true,
+                },
               },
             },
           },

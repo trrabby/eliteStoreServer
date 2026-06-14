@@ -151,7 +151,7 @@ const getMyOrderByNumber = catchAsync(async (req, res) => {
   });
 });
 
-const getOrderByIdAdmin = catchAsync(async (req, res) => {
+const getOrderById = catchAsync(async (req, res) => {
   const orderId = Number(req.params.id);
   const result = await orderService.getOrderByIdAdmin(orderId);
   sendResponse(res, {
@@ -219,7 +219,7 @@ export const OrderController = {
   getMyOrders,
   getMyOrderById,
   getMyOrderByNumber,
-  getOrderByIdAdmin,
+  getOrderById,
   cancelOrder,
   updateOrderStatus,
   updateOrderStatusBulk,
