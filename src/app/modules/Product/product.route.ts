@@ -19,6 +19,8 @@ router.get("/slug/:slug", ProductController.getProductBySlug);
 
 router.get("/id/:id", ProductController.getProductByIdPublic);
 
+router.get("/:id", ProductController.getProductById);
+
 // ─────────────────────────────────────────
 // VENDOR / ADMIN
 // ─────────────────────────────────────────
@@ -27,12 +29,6 @@ router.get(
   "/my-products",
   auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   ProductController.getMyProducts,
-);
-
-router.get(
-  "/:id",
-  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
-  ProductController.getProductById,
 );
 
 router.post(
