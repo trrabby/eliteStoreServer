@@ -78,8 +78,8 @@ const getAllProducts = catchAsync(async (req, res) => {
 });
 
 const getProductByIdPublic = catchAsync(async (req, res) => {
-  const id = Number(req.params.id);
-  const result = await productService.getProductByIdPublic(id);
+  const publicId = req.params.id;
+  const result = await productService.getProductByIdPublic(publicId);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

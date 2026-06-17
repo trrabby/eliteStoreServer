@@ -694,9 +694,9 @@ const getProductBySlug = async (slug: string) => {
   return product;
 };
 
-const getProductByIdPublic = async (id: number) => {
+const getProductByIdPublic = async (id: string) => {
   const product = await prisma.product.findUnique({
-    where: { id },
+    where: { publicId: id },
     include: {
       brand: { select: { id: true, name: true } },
       vendor: { select: { id: true, storeName: true } },
@@ -786,7 +786,7 @@ const getMyProducts = async (
       orderBy: { createdAt: "desc" },
       include: {
         images: { where: { isPrimary: true }, take: 1 },
-        variants: { where: { isDefault: true }, take: 1 },
+        variants: true,
         _count: { select: { reviews: true, orderItems: true } },
       },
     }),

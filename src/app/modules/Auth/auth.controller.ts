@@ -89,10 +89,10 @@ const loginOrRegisterViaGoogle = catchAsync(async (req, res) => {
     req,
   );
 
-  res.cookie("refreshToken", result.refreshToken, {
-    secure: config.env === "production",
-    httpOnly: true,
-  });
+  // res.cookie("refreshToken", result.refreshToken, {
+  //   secure: config.env === "production",
+  //   httpOnly: true,
+  // });
 
   sendResponse(res, {
     statusCode: result.isNewUser ? httpStatus.CREATED : httpStatus.OK,
@@ -135,10 +135,10 @@ const loginOrRegisterViaGithub = catchAsync(async (req, res) => {
     req,
   );
 
-  res.cookie("refreshToken", result.refreshToken, {
-    secure: config.env === "production",
-    httpOnly: true,
-  });
+  // res.cookie("refreshToken", result.refreshToken, {
+  //   secure: config.env === "production",
+  //   httpOnly: true,
+  // });
 
   sendResponse(res, {
     statusCode: result.isNewUser ? httpStatus.CREATED : httpStatus.OK,

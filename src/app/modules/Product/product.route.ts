@@ -17,9 +17,9 @@ router.get("/", ProductController.getAllProducts);
 
 router.get("/slug/:slug", ProductController.getProductBySlug);
 
-router.get("/id/:id", ProductController.getProductByIdPublic);
+router.get("/publicId/:id", ProductController.getProductByIdPublic);
 
-router.get("/:id", ProductController.getProductById);
+router.get("/productId/:id", ProductController.getProductById);
 
 // ─────────────────────────────────────────
 // VENDOR / ADMIN
