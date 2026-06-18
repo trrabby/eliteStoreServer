@@ -830,7 +830,7 @@ const getMyVendorOrders = async (
 
   if (!user.vendorProfile)
     throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
-  console.log(user.vendorProfile.id);
+  // console.log(user.vendorProfile.id);
   return getVendorOrders(user.vendorProfile.id, query);
 };
 
@@ -1189,6 +1189,7 @@ const updateOrderStatus = async (
   if (!order.payment) {
     throw new AppError(httpStatus.NOT_ACCEPTABLE, "Payment info not provided");
   }
+  console.log(order.payment);
 
   // ── Vendor permission & scope check ──────────────────────────
   if (user.role === "VENDOR") {
@@ -1224,9 +1225,7 @@ const updateOrderStatus = async (
   const updated = await prisma.$transaction(async (tx) => {
     /** ---------------- DELIVERY LOGIC ---------------- **/
     if (payload.status === "DELIVERED") {
-      const payment = await tx.payment.findUnique({
-        where: { orderId },
-      });
+      const payment = await tx.payment.findUnique({ where: { orderId } });
 
       if (payment?.status !== "SUCCESS" && payload.isPaymentReceived !== true) {
         throw new AppError(
@@ -1235,22 +1234,35 @@ const updateOrderStatus = async (
         );
       }
 
-      // mark payment success (COD or manual)
+      // Mark payment success (COD / manual)
       if (payment && payment.status !== "SUCCESS") {
         await tx.payment.update({
           where: { id: payment.id },
-          data: {
-            status: "SUCCESS",
-            paidAt: new Date(),
-          },
+          data: { status: "SUCCESS", paidAt: new Date() },
         });
       }
 
-      // update shipment delivered time
+      // Update shipment delivered time
       if (order.shipment) {
         await tx.shipment.update({
           where: { id: order.shipment.id },
           data: { deliveredAt: new Date() },
+        });
+      }
+
+      // ── Increment vendorDue ────────────────────────────────────────
+      // Since one order = one vendor, derive vendorId from first item
+      const vendorId = order.items[0]?.product?.vendorId ?? null;
+      if (vendorId) {
+        // Vendor earns total minus shipping fee
+        const vendorEarning = Math.max(
+          0,
+          Number(order.total) - Number(order.shippingFee),
+        );
+
+        await tx.vendorProfile.update({
+          where: { id: vendorId },
+          data: { vendorDue: { increment: vendorEarning } },
         });
       }
     }
@@ -1396,6 +1408,12 @@ const updateOrderStatusBulk = async (
         });
         continue;
       }
+      if (!order.payment) {
+        throw new AppError(
+          httpStatus.NOT_ACCEPTABLE,
+          "Payment info not provided",
+        );
+      }
 
       await prisma.$transaction(async (tx) => {
         /** -------- DELIVERY -------- **/
@@ -1422,6 +1440,22 @@ const updateOrderStatusBulk = async (
             await tx.shipment.update({
               where: { id: order.shipment.id },
               data: { deliveredAt: new Date() },
+            });
+          }
+
+          // ── Increment vendorDue ────────────────────────────────────────
+          // Since one order = one vendor, derive vendorId from first item
+          const vendorId = order.items[0]?.product?.vendorId ?? null;
+          if (vendorId) {
+            // Vendor earns total minus shipping fee
+            const vendorEarning = Math.max(
+              0,
+              Number(order.total) - Number(order.shippingFee),
+            );
+
+            await tx.vendorProfile.update({
+              where: { id: vendorId },
+              data: { vendorDue: { increment: vendorEarning } },
             });
           }
         }

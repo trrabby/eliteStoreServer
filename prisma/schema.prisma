@@ -8,24 +8,24 @@ datasource db {
 }
 
 model User {
-  id                         Int                  @id @default(autoincrement())
-  publicId                   String               @unique @default(cuid())
-  vendorProfileId            Int?                 @unique
-  email                      String               @unique
-  phone                      String?              @unique
+  id                         Int                     @id @default(autoincrement())
+  publicId                   String                  @unique @default(cuid())
+  vendorProfileId            Int?                    @unique
+  email                      String                  @unique
+  phone                      String?                 @unique
   password                   String?
-  role                       Role                 @default(CUSTOMER)
+  role                       Role                    @default(CUSTOMER)
   roleUpdatedById            Int?
-  isEmailVerified            Boolean              @default(false)
-  isPhoneVerified            Boolean              @default(false)
-  isActive                   Boolean              @default(true)
-  isBanned                   Boolean              @default(false)
+  isEmailVerified            Boolean                 @default(false)
+  isPhoneVerified            Boolean                 @default(false)
+  isActive                   Boolean                 @default(true)
+  isBanned                   Boolean                 @default(false)
   lastLoginAt                DateTime?
-  createdAt                  DateTime             @default(now())
-  updatedAt                  DateTime             @updatedAt
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
   accountInfo                AccountInfo?
   addresses                  Address[]
-  roleUpdatedBy              User?                @relation("RoleUpdater", fields: [roleUpdatedById], references: [id])
+  roleUpdatedBy              User?                   @relation("RoleUpdater", fields: [roleUpdatedById], references: [id])
   cart                       Cart?
   couponsUsed                CouponUsage[]
   notifications              Notification[]
@@ -37,23 +37,25 @@ model User {
   reviews                    Review[]
   searchHistory              SearchHistory[]
   sessions                   Session[]
-  vendorProfile              VendorProfile?       @relation("vendorProfile")
+  vendorProfile              VendorProfile?          @relation("vendorProfile")
   wallet                     Wallet?
   wishlist                   Wishlist?
-  flashSalesCreated          FlashSale[]          @relation("FlashSaleCreator")
-  orderStatusUpdates         Order[]              @relation("OrderStatusUpdater")
-  productStatusUpdates       Product[]            @relation("ProductStatusUpdater")
-  flashSaleStatusUpdates     FlashSale[]          @relation("FlashSaleStatusUpdater")
-  orderStatusHistories       OrderStatusHistory[] @relation("OrderStatusHistoryUpdater")
-  returnRequestStatusUpdates ReturnRequest[]      @relation("ReturnRequestStatusUpdater")
-  reviewStatusUpdates        Review[]             @relation("ReviewStatusUpdater")
-  couponsCreated             Coupon[]             @relation("couponsCreated")
-  flashSaleItems             FlashSaleItem[]      @relation("FlashSaleItemAdder")
-  productAttributes          ProductAttribute[]   @relation("ProductAttributeAdder")
-  productDiscounts           ProductDiscount[]    @relation("ProductDiscountCreator")
-  shipmentsCreated           Shipment[]           @relation("ShipmentCreator")
-  roleUpdates                User[]               @relation("RoleUpdater")
-  vendorVerifications        VendorProfile[]      @relation("VendorVerifier")
+  flashSalesCreated          FlashSale[]             @relation("FlashSaleCreator")
+  orderStatusUpdates         Order[]                 @relation("OrderStatusUpdater")
+  productStatusUpdates       Product[]               @relation("ProductStatusUpdater")
+  flashSaleStatusUpdates     FlashSale[]             @relation("FlashSaleStatusUpdater")
+  orderStatusHistories       OrderStatusHistory[]    @relation("OrderStatusHistoryUpdater")
+  returnRequestStatusUpdates ReturnRequest[]         @relation("ReturnRequestStatusUpdater")
+  reviewStatusUpdates        Review[]                @relation("ReviewStatusUpdater")
+  couponsCreated             Coupon[]                @relation("couponsCreated")
+  flashSaleItems             FlashSaleItem[]         @relation("FlashSaleItemAdder")
+  productAttributes          ProductAttribute[]      @relation("ProductAttributeAdder")
+  productDiscounts           ProductDiscount[]       @relation("ProductDiscountCreator")
+  shipmentsCreated           Shipment[]              @relation("ShipmentCreator")
+  roleUpdates                User[]                  @relation("RoleUpdater")
+  vendorVerifications        VendorProfile[]         @relation("VendorVerifier")
+  vendorWithdrawRequests     VendorWithdrawRequest[] @relation("VendorWithdrawUser")
+  vendorWithdrawsPaid        VendorWithdrawRequest[] @relation("WithdrawPaidBy")
 
   @@index([publicId])
   @@index([email])
@@ -142,33 +144,60 @@ model Address {
 }
 
 model VendorProfile {
-  id           Int         @id @default(autoincrement())
-  publicId     String      @unique @default(cuid())
-  userId       Int         @unique
-  storeName    String      @unique
-  slug         String      @unique
-  logo         String?
-  banner       String?
-  description  String?
-  rating       Decimal     @default(0) @db.Decimal(3, 2)
-  totalSales   Int         @default(0)
-  isVerified   Boolean     @default(false)
-  verifiedById Int?
-  isActive     Boolean     @default(true)
-  returnPolicy String?
-  supportEmail String?
-  supportPhone String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  products     Product[]
-  user         User        @relation("vendorProfile", fields: [userId], references: [id])
-  verifiedBy   User?       @relation("VendorVerifier", fields: [verifiedById], references: [id], onDelete: Restrict)
-  flashSales   FlashSale[]
+  id                  Int                     @id @default(autoincrement())
+  publicId            String                  @unique @default(cuid())
+  userId              Int                     @unique
+  storeName           String                  @unique
+  slug                String                  @unique
+  logo                String?
+  banner              String?
+  description         String?
+  rating              Decimal                 @default(0) @db.Decimal(3, 2)
+  totalSales          Int                     @default(0)
+  isVerified          Boolean                 @default(false)
+  verifiedById        Int?
+  isActive            Boolean                 @default(true)
+  returnPolicy        String?
+  supportEmail        String?
+  supportPhone        String?
+  vendorDue           Decimal                 @default(0) @db.Decimal(12, 2)
+  lastPaymentReceived DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  withdrawRequests    VendorWithdrawRequest[]
+  products            Product[]
+  user                User                    @relation("vendorProfile", fields: [userId], references: [id])
+  verifiedBy          User?                   @relation("VendorVerifier", fields: [verifiedById], references: [id], onDelete: Restrict)
+  flashSales          FlashSale[]
 
   @@index([publicId])
   @@index([slug])
   @@index([isVerified, isActive])
   @@map("vendor_profiles")
+}
+
+model VendorWithdrawRequest {
+  id            Int                   @id @default(autoincrement())
+  publicId      String                @unique @default(cuid())
+  vendorId      Int
+  userId        Int
+  description   String?
+  paymentMethod String
+  amount        Decimal               @db.Decimal(12, 2)
+  status        WithdrawRequestStatus @default(PENDING)
+  paidThrough   String?
+  paidById      Int?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  vendor        VendorProfile         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  user          User                  @relation("VendorWithdrawUser", fields: [userId], references: [id])
+  paidBy        User?                 @relation("WithdrawPaidBy", fields: [paidById], references: [id])
+
+  @@index([vendorId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("vendor_withdraw_requests")
 }
 
 model Category {
@@ -863,6 +892,13 @@ enum PaymentStatus {
   CANCELLED
   REFUNDED
   PARTIALLY_REFUNDED
+}
+
+enum WithdrawRequestStatus {
+  PENDING
+  PROCESSING
+  PAID
+  CANCELLED
 }
 
 enum WalletTransactionPaymentStatus {

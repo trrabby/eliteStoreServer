@@ -17,6 +17,7 @@ import { inventoryLogRouter } from "../modules/InventoryLog/inventoryLog.route";
 import { walletRouter } from "../modules/Wallet/wallet.route";
 import { notificationRouter } from "../modules/Notification/notification.route";
 import { flashSaleRouter } from "../modules/FlashSale/FlashSale.route";
+import { vendorWithdrawRouter } from "../modules/vendorWithdraw/vendorWithdraw.route";
 
 const router = express.Router();
 
@@ -32,6 +33,10 @@ const moduleRoutes = [
   {
     path: "/vendors",
     route: vendorProfileRouter,
+  },
+  {
+    path: "/vendor-withdrawals",
+    route: vendorWithdrawRouter,
   },
   {
     path: "/categories",
