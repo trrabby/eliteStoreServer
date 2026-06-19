@@ -151,6 +151,7 @@ const addToCart = async (
     quantity: number;
   },
 ) => {
+  // console.log(payload);
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
   });

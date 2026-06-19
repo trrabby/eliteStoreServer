@@ -1230,7 +1230,7 @@ const updateOrderStatus = async (
       if (payment?.status !== "SUCCESS" && payload.isPaymentReceived !== true) {
         throw new AppError(
           httpStatus.BAD_REQUEST,
-          "Order cannot be marked as delivered without successful payment. Use isPaymentReceived to override.",
+          "Order cannot be marked as delivered without successful payment.",
         );
       }
 
@@ -1254,10 +1254,27 @@ const updateOrderStatus = async (
       // Since one order = one vendor, derive vendorId from first item
       const vendorId = order.items[0]?.product?.vendorId ?? null;
       if (vendorId) {
+        //retrive charge percetage of vendor per order
+        const vendor = await prisma.vendorProfile.findUnique({
+          where: { id: vendorId },
+        });
+        if (!vendor) {
+          throw new AppError(httpStatus.FORBIDDEN, "Vendor Not Found");
+        }
+        const chargePercentage = Number(vendor.ChargePercentageOnOrder || 5);
+
         // Vendor earns total minus shipping fee
+        const vendorEarningBeforeCharge =
+          Number(order.total) - Number(order.shippingFee);
+
+        // Marketplace commission
+        const chargeAmount =
+          (vendorEarningBeforeCharge * chargePercentage) / 100;
+
+        // Final vendor earning
         const vendorEarning = Math.max(
           0,
-          Number(order.total) - Number(order.shippingFee),
+          vendorEarningBeforeCharge - chargeAmount,
         );
 
         await tx.vendorProfile.update({
@@ -1447,10 +1464,29 @@ const updateOrderStatusBulk = async (
           // Since one order = one vendor, derive vendorId from first item
           const vendorId = order.items[0]?.product?.vendorId ?? null;
           if (vendorId) {
+            //retrive charge percetage of vendor per order
+            const vendor = await prisma.vendorProfile.findUnique({
+              where: { id: vendorId },
+            });
+            if (!vendor) {
+              throw new AppError(httpStatus.FORBIDDEN, "Vendor Not Found");
+            }
+            const chargePercentage = Number(
+              vendor.ChargePercentageOnOrder || 5,
+            );
+
             // Vendor earns total minus shipping fee
+            const vendorEarningBeforeCharge =
+              Number(order.total) - Number(order.shippingFee);
+
+            // Marketplace commission
+            const chargeAmount =
+              (vendorEarningBeforeCharge * chargePercentage) / 100;
+
+            // Final vendor earning
             const vendorEarning = Math.max(
               0,
-              Number(order.total) - Number(order.shippingFee),
+              vendorEarningBeforeCharge - chargeAmount,
             );
 
             await tx.vendorProfile.update({

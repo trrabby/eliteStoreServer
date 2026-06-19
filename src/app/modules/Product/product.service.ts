@@ -446,6 +446,7 @@ const getAllProducts = async (query: {
             price: true,
             comparePrice: true,
             stock: true,
+            images: true,
             isDefault: true,
           },
         },
@@ -633,6 +634,7 @@ const getProductBySlug = async (slug: string) => {
       variants: {
         where: { isActive: true },
         include: {
+          images: true,
           optionValues: {
             include: {
               value: {
@@ -704,6 +706,7 @@ const getProductByIdPublic = async (id: string) => {
       images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] },
       variants: {
         include: {
+          images: true,
           optionValues: { include: { value: { include: { option: true } } } },
         },
       },
