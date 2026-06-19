@@ -12,6 +12,9 @@ const updateWithdrawStatus = z.object({
   body: z.object({
     status: z.enum(["PROCESSING", "PAID", "CANCELLED"]),
     paidThrough: z.string().optional(),
+    cancelReason: z.string().optional(),
+    processingDetails: z.string().optional(),
+    paidOn: z.string().optional(),
   }),
 });
 

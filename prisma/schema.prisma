@@ -177,21 +177,24 @@ model VendorProfile {
 }
 
 model VendorWithdrawRequest {
-  id            Int                   @id @default(autoincrement())
-  publicId      String                @unique @default(cuid())
-  vendorId      Int
-  userId        Int
-  description   String?
-  paymentMethod String
-  amount        Decimal               @db.Decimal(12, 2)
-  status        WithdrawRequestStatus @default(PENDING)
-  paidThrough   String?
-  paidById      Int?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
-  vendor        VendorProfile         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  user          User                  @relation("VendorWithdrawUser", fields: [userId], references: [id])
-  paidBy        User?                 @relation("WithdrawPaidBy", fields: [paidById], references: [id])
+  id                Int                   @id @default(autoincrement())
+  publicId          String                @unique @default(cuid())
+  vendorId          Int
+  userId            Int
+  description       String?
+  paymentMethod     String
+  amount            Decimal               @db.Decimal(12, 2)
+  status            WithdrawRequestStatus @default(PENDING)
+  paidThrough       String?
+  paidById          Int?
+  paidOn            DateTime?
+  cancelReason      String?
+  processingDetails String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  vendor            VendorProfile         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  user              User                  @relation("VendorWithdrawUser", fields: [userId], references: [id])
+  paidBy            User?                 @relation("WithdrawPaidBy", fields: [paidById], references: [id])
 
   @@index([vendorId])
   @@index([userId])

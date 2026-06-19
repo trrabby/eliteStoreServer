@@ -207,6 +207,18 @@ const getAllWithdrawRequests = async (query: {
         vendor: { storeName: { contains: query.search, mode: "insensitive" } },
       },
       { user: { email: { contains: query.search, mode: "insensitive" } } },
+      {
+        paymentMethod: { contains: query.search, mode: "insensitive" },
+      },
+      {
+        description: { contains: query.search, mode: "insensitive" },
+      },
+      {
+        paidThrough: { contains: query.search, mode: "insensitive" },
+      },
+      {
+        publicId: { contains: query.search, mode: "insensitive" },
+      },
     ];
   }
 
@@ -290,9 +302,6 @@ const getSingleWithdrawRequestById = async (
 
   if (!user) throw new AppError(httpStatus.NOT_FOUND, "User not found");
 
-  if (!user.vendorProfile)
-    throw new AppError(httpStatus.FORBIDDEN, "Vendor profile not found");
-
   const request = await prisma.vendorWithdrawRequest.findUnique({
     where: { id: requestId },
     include: {
@@ -314,7 +323,9 @@ const getSingleWithdrawRequestById = async (
       },
       paidBy: {
         select: {
-          accountInfo: { select: { firstName: true, lastName: true } },
+          accountInfo: {
+            select: { firstName: true, lastName: true, id: true, user: true },
+          },
         },
       },
     },
@@ -349,6 +360,9 @@ const updateWithdrawStatus = async (
   payload: {
     status: "PROCESSING" | "PAID" | "CANCELLED";
     paidThrough?: string;
+    processingDetails?: string;
+    cancelReason?: string;
+    paidOn?: string;
   },
 ) => {
   const admin = await prisma.user.findUnique({
@@ -408,6 +422,11 @@ const updateWithdrawStatus = async (
         status: payload.status,
         paidThrough: payload.paidThrough ?? null,
         paidById: payload.status === "PAID" ? admin.id : null,
+        paidOn: payload.status === "PAID" ? payload.paidOn : null,
+        processingDetails:
+          payload.status === "PROCESSING" ? payload.processingDetails : null,
+        cancelReason:
+          payload.status === "CANCELLED" ? payload.cancelReason : null,
       },
       include: {
         vendor: {
