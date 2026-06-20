@@ -674,7 +674,14 @@ const getProductBySlug = async (slug: string) => {
       flashSaleItem: {
         include: {
           flashSale: {
-            select: { title: true, endsAt: true, status: true },
+            select: {
+              title: true,
+              endsAt: true,
+              status: true,
+              slug: true,
+              banner: true,
+              description: true,
+            },
           },
         },
       },
