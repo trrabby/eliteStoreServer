@@ -46,7 +46,7 @@ router.get(
 
 router.post(
   "/create",
-  auth(Role.ADMIN, Role.SUPER_ADMIN),
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
   multerUpload.none(),
   validateRequestFormdata(couponValidation.createCoupon),
   CouponController.createCoupon,
