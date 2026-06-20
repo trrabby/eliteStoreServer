@@ -52,6 +52,8 @@ const createReview = async (
     throw new AppError(httpStatus.NOT_FOUND, "User not found");
   }
 
+  console.log(payload);
+
   // verify order item belongs to user and is delivered
   const orderItem = await prisma.orderItem.findFirst({
     where: {
@@ -164,6 +166,7 @@ const getProductReviews = async (
         createdAt: true,
         user: {
           select: {
+            id: true,
             accountInfo: {
               select: {
                 firstName: true,
@@ -580,6 +583,7 @@ const updateReview = async (
     rating?: number;
     title?: string;
     body?: string;
+    prevImg?: string[];
   },
   images?: string[],
 ) => {
@@ -600,11 +604,14 @@ const updateReview = async (
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    const { prevImg, ...restPayload } = payload;
+    const mergedImages = [...(images || []), ...(prevImg || [])];
+
     const updatedReview = await tx.review.update({
       where: { id },
       data: {
-        ...payload,
-        ...(images?.length && { images }),
+        ...restPayload,
+        images: mergedImages,
         // reset to approved after edit
         status: "APPROVED",
       },

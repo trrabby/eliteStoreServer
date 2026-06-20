@@ -3,7 +3,11 @@ import { z } from "zod";
 const createReview = z.object({
   body: z.object({
     productId: z.number().int().positive("Product ID is required"),
-    orderItemId: z.number().int().positive("Order item ID is required"),
+    orderItemId: z
+      .number()
+      .int()
+      .positive("Order item ID is required")
+      .optional(),
     rating: z.number().int().min(1).max(5, "Rating must be between 1 and 5"),
     title: z.string().max(100).optional(),
     body: z

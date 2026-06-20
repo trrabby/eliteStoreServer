@@ -616,6 +616,8 @@ const getProductBySlug = async (slug: string) => {
           publicId: true,
           storeName: true,
           slug: true,
+          returnAcceptWithin: true,
+          returnPolicy: true,
           logo: true,
           rating: true,
           isVerified: true,

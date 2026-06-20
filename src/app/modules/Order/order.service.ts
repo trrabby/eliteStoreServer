@@ -314,6 +314,7 @@ const createOrder = async (
             totalPrice: totalPrice,
             snapshot: {
               // Product info
+              productId: cartItem.product.id,
               productName: cartItem.product.name,
               productSlug: cartItem.product.slug,
               variantName: cartItem.variant.name,
@@ -872,13 +873,15 @@ const getMyOrders = async (
         createdAt: true,
         deliveredAt: true,
         items: {
-          take: 3, // preview first 3 items
+          // take: 3, // preview first 3 items
           select: {
+            id: true,
             quantity: true,
             unitPrice: true,
             snapshot: true,
           },
         },
+
         payment: {
           select: { status: true, method: true },
         },

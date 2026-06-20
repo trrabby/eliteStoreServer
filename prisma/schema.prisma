@@ -157,6 +157,7 @@ model VendorProfile {
   isVerified              Boolean                 @default(false)
   verifiedById            Int?
   isActive                Boolean                 @default(true)
+  returnAcceptWithin      Int?                    @default(2)
   returnPolicy            String?
   supportEmail            String?
   supportPhone            String?
