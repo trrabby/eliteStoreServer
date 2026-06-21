@@ -3,6 +3,14 @@ import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { userService } from "./user.service";
 import { uploadToCloudinary } from "../../utils/uploadToCloudinary";
+import {
+  AddressType,
+  Gender,
+  OrderStatus,
+  ReturnRequestStatus,
+  Role,
+  UserFilter,
+} from "../../../types/userFilters";
 
 const registerUser = catchAsync(async (req, res) => {
   const data = JSON.parse(req.body.data);
@@ -15,12 +23,177 @@ const registerUser = catchAsync(async (req, res) => {
   });
 });
 
+// controllers/user.controller.ts
 const getAllUsers = catchAsync(async (req, res) => {
-  const result = await userService.getAllUsers();
+  const filter: UserFilter = {
+    page: req.query.page ? Number(req.query.page) : undefined,
+    limit: req.query.limit ? Number(req.query.limit) : undefined,
+    search: req.query.search as string,
+    email: req.query.email as string,
+    phone: req.query.phone as string,
+    role: req.query.role as Role,
+    isBanned:
+      req.query.isBanned === "true"
+        ? true
+        : req.query.isBanned === "false"
+          ? false
+          : undefined,
+    isEmailVerified:
+      req.query.isEmailVerified === "true"
+        ? true
+        : req.query.isEmailVerified === "false"
+          ? false
+          : undefined,
+    isActive:
+      req.query.isActive === "true"
+        ? true
+        : req.query.isActive === "false"
+          ? false
+          : undefined,
+    createdAtFrom: req.query.createdAtFrom as string,
+    createdAtTo: req.query.createdAtTo as string,
+    lastLoginFrom: req.query.lastLoginFrom as string,
+    lastLoginTo: req.query.lastLoginTo as string,
+    firstName: req.query.firstName as string,
+    lastName: req.query.lastName as string,
+    displayName: req.query.displayName as string,
+    gender: req.query.gender as Gender,
+    ageMin: req.query.ageMin ? Number(req.query.ageMin) : undefined,
+    ageMax: req.query.ageMax ? Number(req.query.ageMax) : undefined,
+    dobFrom: req.query.dobFrom as string,
+    dobTo: req.query.dobTo as string,
+    addressCityDistrict: req.query.addressCityDistrict as string,
+    addressCountry: req.query.addressCountry as string,
+    addressPostalCode: req.query.addressPostalCode as string,
+    addressType: req.query.addressType as AddressType,
+    addressIsDefault:
+      req.query.addressIsDefault === "true"
+        ? true
+        : req.query.addressIsDefault === "false"
+          ? false
+          : undefined,
+    orderCountMin: req.query.orderCountMin
+      ? Number(req.query.orderCountMin)
+      : undefined,
+    orderCountMax: req.query.orderCountMax
+      ? Number(req.query.orderCountMax)
+      : undefined,
+    orderTotalSpentMin: req.query.orderTotalSpentMin
+      ? Number(req.query.orderTotalSpentMin)
+      : undefined,
+    orderTotalSpentMax: req.query.orderTotalSpentMax
+      ? Number(req.query.orderTotalSpentMax)
+      : undefined,
+    hasDeliveredOrders:
+      req.query.hasDeliveredOrders === "true"
+        ? true
+        : req.query.hasDeliveredOrders === "false"
+          ? false
+          : undefined,
+    hasCancelledOrders:
+      req.query.hasCancelledOrders === "true"
+        ? true
+        : req.query.hasCancelledOrders === "false"
+          ? false
+          : undefined,
+    hasReturnedOrders:
+      req.query.hasReturnedOrders === "true"
+        ? true
+        : req.query.hasReturnedOrders === "false"
+          ? false
+          : undefined,
+    orderStatus: req.query.orderStatus as OrderStatus,
+    returnRequestStatus: req.query.returnRequestStatus as ReturnRequestStatus,
+    returnRequestCountMin: req.query.returnRequestCountMin
+      ? Number(req.query.returnRequestCountMin)
+      : undefined,
+    returnRequestCountMax: req.query.returnRequestCountMax
+      ? Number(req.query.returnRequestCountMax)
+      : undefined,
+    productInCart:
+      typeof req.query.productInCart === "string"
+        ? req.query.productInCart.split(",").map(Number)
+        : undefined,
+    productInWishlist:
+      typeof req.query.productInWishlist === "string"
+        ? req.query.productInWishlist.split(",").map(Number)
+        : undefined,
+    orderedProduct:
+      typeof req.query.orderedProduct === "string"
+        ? req.query.orderedProduct.split(",").map(Number)
+        : undefined,
+    reviewedProduct:
+      typeof req.query.reviewedProduct === "string"
+        ? req.query.reviewedProduct.split(",").map(Number)
+        : undefined,
+    isVendor:
+      req.query.isVendor === "true"
+        ? true
+        : req.query.isVendor === "false"
+          ? false
+          : undefined,
+    vendorVerified:
+      req.query.vendorVerified === "true"
+        ? true
+        : req.query.vendorVerified === "false"
+          ? false
+          : undefined,
+    vendorStoreName: req.query.vendorStoreName as string,
+    vendorRatingMin: req.query.vendorRatingMin
+      ? Number(req.query.vendorRatingMin)
+      : undefined,
+    vendorRatingMax: req.query.vendorRatingMax
+      ? Number(req.query.vendorRatingMax)
+      : undefined,
+    vendorTotalSalesMin: req.query.vendorTotalSalesMin
+      ? Number(req.query.vendorTotalSalesMin)
+      : undefined,
+    vendorTotalSalesMax: req.query.vendorTotalSalesMax
+      ? Number(req.query.vendorTotalSalesMax)
+      : undefined,
+    usedCouponCode: req.query.usedCouponCode as string,
+    usedCouponId: req.query.usedCouponId
+      ? Number(req.query.usedCouponId)
+      : undefined,
+    hasWrittenReviews:
+      req.query.hasWrittenReviews === "true"
+        ? true
+        : req.query.hasWrittenReviews === "false"
+          ? false
+          : undefined,
+    reviewRatingMin: req.query.reviewRatingMin
+      ? Number(req.query.reviewRatingMin)
+      : undefined,
+    reviewRatingMax: req.query.reviewRatingMax
+      ? Number(req.query.reviewRatingMax)
+      : undefined,
+    reviewCountMin: req.query.reviewCountMin
+      ? Number(req.query.reviewCountMin)
+      : undefined,
+    reviewCountMax: req.query.reviewCountMax
+      ? Number(req.query.reviewCountMax)
+      : undefined,
+    walletBalanceMin: req.query.walletBalanceMin
+      ? Number(req.query.walletBalanceMin)
+      : undefined,
+    walletBalanceMax: req.query.walletBalanceMax
+      ? Number(req.query.walletBalanceMax)
+      : undefined,
+    hasActiveSession:
+      req.query.hasActiveSession === "true"
+        ? true
+        : req.query.hasActiveSession === "false"
+          ? false
+          : undefined,
+    sortBy: req.query.sortBy as string,
+    sortOrder: req.query.sortOrder as "asc" | "desc",
+  };
+
+  const result = await userService.getAllUsers(filter);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: "Users retrieved successfully",
+    message: "Users retrieved",
     data: result,
   });
 });
@@ -48,14 +221,18 @@ const makeAdmin = catchAsync(async (req, res) => {
   });
 });
 
-const getAnAccountByEmail = catchAsync(async (req, res) => {
-  const { email } = req.params;
-  const result = await userService.getAccountByEmail(email as string);
+// Admin: get single user details
+const getUserDetails = catchAsync(async (req, res) => {
+  const { identifier } = req.params;
+  const isId = !isNaN(Number(identifier));
+  const user = await userService.getUserByIdOrEmail(
+    isId ? Number(identifier) : identifier,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: "Account retrieved successfully",
-    data: result,
+    message: "User details retrieved",
+    data: user,
   });
 });
 
@@ -187,9 +364,9 @@ const deleteAddress = catchAsync(async (req, res) => {
 export const UserController = {
   registerUser,
   getAllUsers,
+  getUserDetails,
   getMyProfile,
   makeAdmin,
-  getAnAccountByEmail,
   updateMyProfile,
   toggleUserStatus,
   deleteAProfile,

@@ -33,9 +33,9 @@ router.get(
 );
 
 router.get(
-  "/by-email/:email",
+  "/user-details/:identifier",
   // auth(Role.ADMIN, Role.SUPER_ADMIN),
-  UserController.getAnAccountByEmail,
+  UserController.getUserDetails,
 );
 
 router.patch(
