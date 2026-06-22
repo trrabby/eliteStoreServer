@@ -6,18 +6,9 @@ import { Role } from "@prisma/client";
 // services/user.service.ts
 import { Prisma } from "@prisma/client";
 import { DateRange, UserFilter } from "../../../types/userFilters";
-
-// Helper to add date range
-const addDateRange = (where: any, field: string, range?: DateRange) => {
-  if (range?.from || range?.to) {
-    where[field] = {};
-    if (range.from) where[field].gte = new Date(range.from);
-    if (range.to) where[field].lte = new Date(range.to);
-  }
-};
+import { escapeSqlValue } from "../../../helpers/sql";
 
 // services/user.service.ts - part 1
-
 const buildDirectWhere = (filter: UserFilter): Prisma.UserWhereInput => {
   const where: Prisma.UserWhereInput = {};
 
@@ -48,7 +39,7 @@ const buildDirectWhere = (filter: UserFilter): Prisma.UserWhereInput => {
       where.lastLoginAt.lte = new Date(filter.lastLoginTo);
   }
 
-  // AccountInfo
+  // AccountInfo fields
   if (
     filter.firstName ||
     filter.lastName ||
@@ -74,7 +65,7 @@ const buildDirectWhere = (filter: UserFilter): Prisma.UserWhereInput => {
     if (filter.gender) where.accountInfo.gender = filter.gender;
   }
 
-  // Date of birth range
+  // Date of birth / age
   if (filter.dobFrom || filter.dobTo) {
     where.accountInfo = where.accountInfo || {};
     where.accountInfo.dateOfBirth = {};
@@ -83,8 +74,6 @@ const buildDirectWhere = (filter: UserFilter): Prisma.UserWhereInput => {
     if (filter.dobTo)
       where.accountInfo.dateOfBirth.lte = new Date(filter.dobTo);
   }
-
-  // Age filters (convert age to dob range)
   if (filter.ageMin !== undefined || filter.ageMax !== undefined) {
     const today = new Date();
     const minDate =
@@ -118,28 +107,28 @@ const buildDirectWhere = (filter: UserFilter): Prisma.UserWhereInput => {
     filter.addressIsDefault !== undefined
   ) {
     where.addresses = { some: {} };
-    const addressSome = where.addresses.some!;
+    const addrSome = (where.addresses as any).some as any;
     if (filter.addressCityDistrict)
-      addressSome.city_district = {
+      addrSome.city_district = {
         contains: filter.addressCityDistrict,
         mode: "insensitive",
       };
     if (filter.addressCountry)
-      addressSome.country = {
+      addrSome.country = {
         contains: filter.addressCountry,
         mode: "insensitive",
       };
     if (filter.addressPostalCode)
-      addressSome.postalCode = {
+      addrSome.postalCode = {
         contains: filter.addressPostalCode,
         mode: "insensitive",
       };
-    if (filter.addressType) addressSome.type = filter.addressType;
+    if (filter.addressType) addrSome.type = filter.addressType;
     if (filter.addressIsDefault !== undefined)
-      addressSome.isDefault = filter.addressIsDefault;
+      addrSome.isDefault = filter.addressIsDefault;
   }
 
-  // Order status existence
+  // Order existence filters
   if (filter.hasDeliveredOrders !== undefined) {
     where.orders = filter.hasDeliveredOrders
       ? { some: { status: "DELIVERED" } }
@@ -190,7 +179,7 @@ const buildDirectWhere = (filter: UserFilter): Prisma.UserWhereInput => {
     where.reviews = { some: { productId: { in: filter.reviewedProduct } } };
   }
 
-  // Vendor profile filters
+  // Vendor profile
   if (
     filter.isVendor !== undefined ||
     filter.vendorVerified !== undefined ||
@@ -198,9 +187,8 @@ const buildDirectWhere = (filter: UserFilter): Prisma.UserWhereInput => {
   ) {
     where.vendorProfile = {};
     if (filter.isVendor !== undefined) {
-      // We cannot use isNot: null in some Prisma versions; use OR with null check
-      if (filter.isVendor) where.vendorProfile = { isNot: null };
-      else where.vendorProfile = { is: null };
+      if (filter.isVendor) where.vendorProfile.isNot = null;
+      else where.vendorProfile.is = null;
     }
     if (filter.vendorVerified !== undefined)
       where.vendorProfile.isVerified = filter.vendorVerified;
@@ -254,18 +242,10 @@ const buildDirectWhere = (filter: UserFilter): Prisma.UserWhereInput => {
 };
 
 // services/user.service.ts - part 2
-
 const getMatchingUserIdsFromAggregates = async (
   filter: UserFilter,
 ): Promise<{ userIds: number[] }> => {
   const conditions: string[] = [];
-  const params: any[] = [];
-
-  // Helper to add a condition with parameters
-  const addCondition = (sql: string, values: any[]) => {
-    conditions.push(sql);
-    params.push(...values);
-  };
 
   // Order count
   if (
@@ -274,9 +254,8 @@ const getMatchingUserIdsFromAggregates = async (
   ) {
     const min = filter.orderCountMin ?? 0;
     const max = filter.orderCountMax ?? 999999;
-    addCondition(
-      `(SELECT COUNT(*) FROM orders WHERE orders."userId" = users.id) BETWEEN $${params.length + 1} AND $${params.length + 2}`,
-      [min, max],
+    conditions.push(
+      `(SELECT COUNT(*) FROM orders WHERE orders."userId" = users.id) BETWEEN ${escapeSqlValue(min)} AND ${escapeSqlValue(max)}`,
     );
   }
 
@@ -287,9 +266,8 @@ const getMatchingUserIdsFromAggregates = async (
   ) {
     const min = filter.orderTotalSpentMin ?? 0;
     const max = filter.orderTotalSpentMax ?? 999999999;
-    addCondition(
-      `(SELECT COALESCE(SUM(total), 0) FROM orders WHERE orders."userId" = users.id) BETWEEN $${params.length + 1} AND $${params.length + 2}`,
-      [min, max],
+    conditions.push(
+      `(SELECT COALESCE(SUM(total), 0) FROM orders WHERE orders."userId" = users.id) BETWEEN ${escapeSqlValue(min)} AND ${escapeSqlValue(max)}`,
     );
   }
 
@@ -300,9 +278,8 @@ const getMatchingUserIdsFromAggregates = async (
   ) {
     const min = filter.returnRequestCountMin ?? 0;
     const max = filter.returnRequestCountMax ?? 999999;
-    addCondition(
-      `(SELECT COUNT(*) FROM return_requests WHERE return_requests."userId" = users.id) BETWEEN $${params.length + 1} AND $${params.length + 2}`,
-      [min, max],
+    conditions.push(
+      `(SELECT COUNT(*) FROM return_requests WHERE return_requests."userId" = users.id) BETWEEN ${escapeSqlValue(min)} AND ${escapeSqlValue(max)}`,
     );
   }
 
@@ -313,9 +290,8 @@ const getMatchingUserIdsFromAggregates = async (
   ) {
     const min = filter.reviewCountMin ?? 0;
     const max = filter.reviewCountMax ?? 999999;
-    addCondition(
-      `(SELECT COUNT(*) FROM reviews WHERE reviews."userId" = users.id) BETWEEN $${params.length + 1} AND $${params.length + 2}`,
-      [min, max],
+    conditions.push(
+      `(SELECT COUNT(*) FROM reviews WHERE reviews."userId" = users.id) BETWEEN ${escapeSqlValue(min)} AND ${escapeSqlValue(max)}`,
     );
   }
 
@@ -326,9 +302,8 @@ const getMatchingUserIdsFromAggregates = async (
   ) {
     const min = filter.vendorRatingMin ?? 0;
     const max = filter.vendorRatingMax ?? 5;
-    addCondition(
-      `(SELECT rating FROM vendor_profiles WHERE vendor_profiles."userId" = users.id) BETWEEN $${params.length + 1} AND $${params.length + 2}`,
-      [min, max],
+    conditions.push(
+      `(SELECT rating FROM vendor_profiles WHERE vendor_profiles."userId" = users.id) BETWEEN ${escapeSqlValue(min)} AND ${escapeSqlValue(max)}`,
     );
   }
 
@@ -339,22 +314,20 @@ const getMatchingUserIdsFromAggregates = async (
   ) {
     const min = filter.vendorTotalSalesMin ?? 0;
     const max = filter.vendorTotalSalesMax ?? 999999;
-    addCondition(
-      `(SELECT "totalSales" FROM vendor_profiles WHERE vendor_profiles."userId" = users.id) BETWEEN $${params.length + 1} AND $${params.length + 2}`,
-      [min, max],
+    conditions.push(
+      `(SELECT "totalSales" FROM vendor_profiles WHERE vendor_profiles."userId" = users.id) BETWEEN ${escapeSqlValue(min)} AND ${escapeSqlValue(max)}`,
     );
   }
 
-  // Review rating average
+  // Average review rating
   if (
     filter.reviewRatingMin !== undefined ||
     filter.reviewRatingMax !== undefined
   ) {
     const min = filter.reviewRatingMin ?? 1;
     const max = filter.reviewRatingMax ?? 5;
-    addCondition(
-      `(SELECT COALESCE(AVG(rating), 0) FROM reviews WHERE reviews."userId" = users.id) BETWEEN $${params.length + 1} AND $${params.length + 2}`,
-      [min, max],
+    conditions.push(
+      `(SELECT COALESCE(AVG(rating), 0) FROM reviews WHERE reviews."userId" = users.id) BETWEEN ${escapeSqlValue(min)} AND ${escapeSqlValue(max)}`,
     );
   }
 
@@ -365,24 +338,15 @@ const getMatchingUserIdsFromAggregates = async (
   ) {
     const min = filter.walletBalanceMin ?? 0;
     const max = filter.walletBalanceMax ?? 999999;
-    addCondition(
-      `(SELECT balance FROM wallets WHERE wallets."userId" = users.id) BETWEEN $${params.length + 1} AND $${params.length + 2}`,
-      [min, max],
+    conditions.push(
+      `(SELECT balance FROM wallets WHERE wallets."userId" = users.id) BETWEEN ${escapeSqlValue(min)} AND ${escapeSqlValue(max)}`,
     );
   }
 
   if (conditions.length === 0) return { userIds: [] };
 
-  // Build final SQL
-  const sql = `
-    SELECT id FROM users
-    WHERE ${conditions.join(" AND ")}
-  `;
-
-  // Execute with parameters
-  const result = (await prisma.$queryRaw`${Prisma.sql([sql, ...params])}`) as {
-    id: number;
-  }[];
+  const finalSql = `SELECT id FROM users WHERE ${conditions.join(" AND ")}`;
+  const result = (await prisma.$queryRawUnsafe(finalSql)) as { id: number }[];
   return { userIds: result.map((r) => r.id) };
 };
 
@@ -461,7 +425,6 @@ const getAllUsers = async (filter: UserFilter) => {
   const sortBy = filter.sortBy || "createdAt";
   const orderBy = sortMap[sortBy] || { createdAt: sortOrder };
 
-  // Select fields
   const select = {
     id: true,
     publicId: true,
@@ -552,7 +515,7 @@ const getMyProfile = async (email: string) => {
 
 // Get user by email or id
 
-const getUserByIdOrEmail = async (identifier: string | number) => {
+const getUserDetails = async (identifier: string | number) => {
   const where =
     typeof identifier === "number" ? { id: identifier } : { email: identifier };
   const user = await prisma.user.findUnique({
@@ -986,7 +949,7 @@ export const userService = {
   registerUser,
   getAllUsers,
   getMyProfile,
-  getUserByIdOrEmail,
+  getUserDetails,
   makeAdmin,
   updateMyProfile,
   toggleUserStatus,

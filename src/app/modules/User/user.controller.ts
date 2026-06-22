@@ -225,7 +225,7 @@ const makeAdmin = catchAsync(async (req, res) => {
 const getUserDetails = catchAsync(async (req, res) => {
   const { identifier } = req.params;
   const isId = !isNaN(Number(identifier));
-  const user = await userService.getUserByIdOrEmail(
+  const user = await userService.getUserDetails(
     isId ? Number(identifier) : identifier,
   );
   sendResponse(res, {
