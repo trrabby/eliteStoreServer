@@ -33,6 +33,22 @@ const getAllCoupons = catchAsync(async (req, res) => {
   });
 });
 
+const getMyCoupons = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
+  const { page, limit, isActive } = req.query;
+  const result = await couponService.getMyCoupons(email, {
+    page: page ? Number(page) : undefined,
+    limit: limit ? Number(limit) : undefined,
+    isActive: isActive ? isActive === "true" : undefined,
+  });
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Your coupons retrieved",
+    data: result,
+  });
+});
+
 const getCouponById = catchAsync(async (req, res) => {
   const id = Number(req.params.id);
   const result = await couponService.getCouponById(id);
@@ -108,6 +124,7 @@ const getMyCouponHistory = catchAsync(async (req, res) => {
 export const CouponController = {
   createCoupon,
   getAllCoupons,
+  getMyCoupons,
   getCouponById,
   applyCoupon,
   updateCoupon,

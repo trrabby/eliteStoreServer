@@ -61,13 +61,6 @@ const createOrder = async (
                   flashSaleItem: {
                     include: { flashSale: true },
                   },
-                  discounts: {
-                    where: {
-                      isActive: true,
-                      startsAt: { lte: new Date() },
-                      expiresAt: { gte: new Date() },
-                    },
-                  },
                 },
               },
               variant: true,
@@ -82,7 +75,10 @@ const createOrder = async (
   if (!user.cart?.items.length)
     throw new AppError(httpStatus.BAD_REQUEST, "Cart is empty");
 
-  // ── Validate shipping address ──────────────────────────
+  // ── Helper ────────────────────────────────────────────────────
+  const round: any = (value: number) => Math.round(value);
+
+  // ── Validate address ──────────────────────────────────────────
   const shippingAddress = await prisma.address.findFirst({
     where: { id: payload.shippingAddressId, userId: user.id },
   });
@@ -95,25 +91,23 @@ const createOrder = async (
       })
     : null;
 
-  // ── Calculate discounted price for each item ────────────
+  // ── Process each cart item ────────────────────────────────────
   interface ProcessedItem {
     cartItem: any;
-    originalPrice: number;
-    productDiscountPrice: number; // Price after product/flash sale discount
-    productDiscountApplied: number; // Amount saved from product discount
-    productDiscountType: string;
-    productDiscountValue: number;
+    basePrice: number;
+    sellingPrice: number;
+    defaultDiscount: number;
+    flashSaleDiscount: number;
+    priceAfterFlashSale: number;
+    couponBase: number;
+    finalUnitPrice: number;
     flashSaleId?: number;
-    productDiscountId?: number;
   }
 
   const processedItems: ProcessedItem[] = [];
   const issues: string[] = [];
-  let totalProductDiscount = 0;
-  let totalAfterProductDiscount = 0;
 
   for (const item of user.cart.items) {
-    // Check product status
     if (item.product.status !== "ACTIVE")
       issues.push(`"${item.product.name}" is no longer available`);
     if (!item.variant.isActive)
@@ -123,15 +117,19 @@ const createOrder = async (
         `"${item.product.name}" only has ${item.variant.stock} in stock`,
       );
 
-    const originalPrice = Number(item.variant.price);
-    let priceAfterProductDiscount = originalPrice;
-    let productDiscountApplied = 0;
-    let productDiscountType = "";
-    let productDiscountValue = 0;
-    let flashSaleId: number | undefined;
-    let productDiscountId: number | undefined;
+    const sellingPrice = Number(item.variant.price);
+    const comparePrice = item.variant.comparePrice
+      ? Number(item.variant.comparePrice)
+      : null;
 
-    // Check for active flash sale first (priority 1)
+    const basePrice =
+      comparePrice && comparePrice > sellingPrice ? comparePrice : sellingPrice;
+
+    const defaultDiscount = Math.max(0, basePrice - sellingPrice);
+
+    let flashSaleDiscount = 0;
+    let flashSaleId: number | undefined;
+
     if (
       item.product.flashSaleItem &&
       item.product.flashSaleItem.flashSale.isActive
@@ -148,68 +146,37 @@ const createOrder = async (
       });
 
       if (flashSaleStatus) {
-        let salePrice = 0;
         if (flashSale.discountType === "PERCENTAGE") {
           let discountAmount =
-            (originalPrice * Number(flashSale.discountValue)) / 100;
+            (sellingPrice * Number(flashSale.discountValue)) / 100;
           if (flashSale.maxDiscount) {
             discountAmount = Math.min(
               discountAmount,
               Number(flashSale.maxDiscount),
             );
           }
-          salePrice = originalPrice - discountAmount;
-          productDiscountApplied = discountAmount;
+          flashSaleDiscount = discountAmount;
         } else {
-          // FLAT discount
-          salePrice = originalPrice - Number(flashSale.discountValue);
-          productDiscountApplied = Number(flashSale.discountValue);
+          flashSaleDiscount = Number(flashSale.discountValue);
         }
-
-        priceAfterProductDiscount = Math.max(0, salePrice);
-        productDiscountType = flashSale.discountType;
-        productDiscountValue = Number(flashSale.discountValue);
         flashSaleId = flashSale.id;
       }
     }
-    // If no flash sale, check for existing product discount (priority 2)
-    else if (item.product.discounts && item.product.discounts.length > 0) {
-      const productDiscount = item.product.discounts[0];
-      let discountedPrice = 0;
 
-      if (productDiscount.discountType === "PERCENTAGE") {
-        discountedPrice =
-          originalPrice -
-          (originalPrice * Number(productDiscount.discountValue)) / 100;
-        productDiscountApplied =
-          (originalPrice * Number(productDiscount.discountValue)) / 100;
-      } else {
-        discountedPrice = originalPrice - Number(productDiscount.discountValue);
-        productDiscountApplied = Number(productDiscount.discountValue);
-      }
-
-      priceAfterProductDiscount = Math.max(0, discountedPrice);
-      productDiscountType = productDiscount.discountType;
-      productDiscountValue = Number(productDiscount.discountValue);
-      productDiscountId = productDiscount.id;
-    }
-
-    const itemTotalProductDiscount = productDiscountApplied * item.quantity;
-    const itemTotalAfterProductDiscount =
-      priceAfterProductDiscount * item.quantity;
-
-    totalProductDiscount += itemTotalProductDiscount;
-    totalAfterProductDiscount += itemTotalAfterProductDiscount;
+    const priceAfterFlashSale = Math.max(0, sellingPrice - flashSaleDiscount);
+    const couponBase = priceAfterFlashSale;
+    const finalUnitPrice = priceAfterFlashSale;
 
     processedItems.push({
       cartItem: item,
-      originalPrice,
-      productDiscountPrice: priceAfterProductDiscount,
-      productDiscountApplied,
-      productDiscountType,
-      productDiscountValue,
+      basePrice,
+      sellingPrice,
+      defaultDiscount,
+      flashSaleDiscount,
+      priceAfterFlashSale,
+      couponBase,
+      finalUnitPrice,
       flashSaleId,
-      productDiscountId,
     });
   }
 
@@ -219,7 +186,7 @@ const createOrder = async (
       `Cart has issues: ${issues.join(", ")}`,
     );
 
-  // ── Group items by vendorId ────────────────────────────
+  // ── Group items by vendor ────────────────────────────────────
   const itemsByVendor = new Map<number | null, typeof processedItems>();
   for (const item of processedItems) {
     const vid = item.cartItem.product.vendorId ?? null;
@@ -227,60 +194,152 @@ const createOrder = async (
     itemsByVendor.get(vid)!.push(item);
   }
 
-  // ── Calculate vendor subtotals after product discounts ──
-  const vendorSubtotals = new Map<number | null, number>();
+  // ── Compute per‑vendor aggregates ────────────────────────────
+  const vendorData = new Map<
+    number | null,
+    {
+      subtotal: number;
+      defaultDiscountTotal: number;
+      flashSaleDiscountTotal: number;
+      couponBaseTotal: number;
+      items: typeof processedItems;
+    }
+  >();
+
   for (const [vendorId, items] of itemsByVendor) {
-    const vendorSubtotal = items.reduce(
-      (sum, item) => sum + item.productDiscountPrice * item.cartItem.quantity,
-      0,
-    );
-    vendorSubtotals.set(vendorId, vendorSubtotal);
+    let subtotal = 0;
+    let defaultDiscountTotal = 0;
+    let flashSaleDiscountTotal = 0;
+    let couponBaseTotal = 0;
+
+    for (const item of items) {
+      const qty = item.cartItem.quantity;
+      subtotal += item.basePrice * qty;
+      defaultDiscountTotal += item.defaultDiscount * qty;
+      flashSaleDiscountTotal += item.flashSaleDiscount * qty;
+      couponBaseTotal += item.couponBase * qty;
+    }
+
+    vendorData.set(vendorId, {
+      subtotal,
+      defaultDiscountTotal,
+      flashSaleDiscountTotal,
+      couponBaseTotal,
+      items,
+    });
   }
 
-  // ── Apply coupon discount on total after product discounts ──
-  let totalCouponDiscount = 0;
+  // ── Coupon validation & distribution ────────────────────────
   let couponId: number | null = null;
-  let couponDetails: any = null;
+  let couponVendorId: number | null = null;
+  const couponDiscountPerVendor = new Map<number | null, number>();
 
   if (payload.couponCode) {
+    const coupon = await prisma.coupon.findUnique({
+      where: { code: payload.couponCode.toUpperCase() },
+    });
+    if (!coupon) {
+      throw new AppError(httpStatus.BAD_REQUEST, "Invalid coupon code");
+    }
+    couponVendorId = coupon.vendorId ?? null;
+
+    let totalCouponBase = 0;
+    const vendorCouponBases = new Map<number | null, number>();
+    for (const [vendorId, data] of vendorData) {
+      const base = data.couponBaseTotal;
+      vendorCouponBases.set(vendorId, base);
+      totalCouponBase += base;
+    }
+
+    if (couponVendorId !== null) {
+      const vendorBase = vendorCouponBases.get(couponVendorId);
+      if (!vendorBase || vendorBase <= 0) {
+        throw new AppError(
+          httpStatus.BAD_REQUEST,
+          "This coupon only applies to products from a specific vendor not in your cart",
+        );
+      }
+      totalCouponBase = vendorBase;
+    } else {
+      if (totalCouponBase <= 0) {
+        throw new AppError(
+          httpStatus.BAD_REQUEST,
+          "Coupon cannot be applied to zero-value order",
+        );
+      }
+    }
+
     const couponResult = await validateCouponForUser(
       payload.couponCode,
       user.id,
-      totalAfterProductDiscount,
+      totalCouponBase,
     );
-    totalCouponDiscount = couponResult.discountAmount;
+    const totalAllowedDiscount = couponResult.discountAmount;
     couponId = couponResult.coupon.id;
-    couponDetails = couponResult.coupon;
+
+    if (couponVendorId !== null) {
+      couponDiscountPerVendor.set(couponVendorId, round(totalAllowedDiscount));
+    } else {
+      let sumAssigned = 0;
+      const vendorIds = Array.from(vendorCouponBases.keys());
+      for (let i = 0; i < vendorIds.length; i++) {
+        const vid = vendorIds[i];
+        const base = vendorCouponBases.get(vid)!;
+        if (base === 0) {
+          couponDiscountPerVendor.set(vid, 0);
+          continue;
+        }
+        let vendorDiscount: number;
+        if (coupon.discountType === "PERCENTAGE") {
+          let discount = (base * Number(coupon.discountValue)) / 100;
+          if (coupon.maxDiscount) {
+            discount = Math.min(discount, Number(coupon.maxDiscount));
+          }
+          vendorDiscount = Math.min(discount, base);
+        } else {
+          const proportion = base / totalCouponBase;
+          vendorDiscount = proportion * totalAllowedDiscount;
+        }
+        vendorDiscount = round(vendorDiscount);
+        if (i === vendorIds.length - 1) {
+          vendorDiscount = totalAllowedDiscount - sumAssigned;
+        }
+        if (vendorDiscount > 0) {
+          couponDiscountPerVendor.set(vid, vendorDiscount);
+          sumAssigned += vendorDiscount;
+        } else {
+          couponDiscountPerVendor.set(vid, 0);
+        }
+      }
+    }
   }
 
-  // ── Calculate shipping fee ────────────────────────────
+  // ── Shipping fee ──────────────────────────────────────────────
   const addressCity = (shippingAddress.city_district ?? "").toLowerCase();
   const baseShippingFee = addressCity === "dhaka" ? 70 : 130;
-
-  // If client provided shipping fee, use it (split between vendors)
   const shippingFeePerVendor = payload.shippingFeeFromClient
-    ? payload.shippingFeeFromClient / itemsByVendor.size
-    : baseShippingFee;
+    ? round(payload.shippingFeeFromClient / itemsByVendor.size)
+    : round(baseShippingFee);
 
-  // ── Create one order per vendor in a single transaction ─
+  // ── Create orders ────────────────────────────────────────────
   const createdOrders = await prisma.$transaction(async (tx) => {
     const orders: any[] = [];
 
-    for (const [vendorId, items] of itemsByVendor) {
-      const vendorSubtotal = vendorSubtotals.get(vendorId) || 0;
+    for (const [vendorId, data] of vendorData) {
+      const {
+        subtotal,
+        defaultDiscountTotal,
+        flashSaleDiscountTotal,
+        couponBaseTotal,
+        items,
+      } = data;
+      const couponDiscount = couponDiscountPerVendor.get(vendorId) || 0;
+      const totalDiscount =
+        defaultDiscountTotal + flashSaleDiscountTotal + couponDiscount;
+      const orderTotal = round(
+        Math.max(0, subtotal - totalDiscount + shippingFeePerVendor),
+      );
 
-      // Proportional coupon discount for this vendor's share
-      const vendorCouponDiscount =
-        totalAfterProductDiscount > 0
-          ? (vendorSubtotal / totalAfterProductDiscount) * totalCouponDiscount
-          : 0;
-
-      // Calculate totals
-      const vendorTotalAfterProductDiscount = vendorSubtotal;
-      const vendorTotalAfterCoupon = vendorSubtotal - vendorCouponDiscount;
-      const vendorGrandTotal = vendorTotalAfterCoupon + shippingFeePerVendor;
-
-      // Create order
       const order = await tx.order.create({
         data: {
           userId: user.id,
@@ -288,21 +347,28 @@ const createOrder = async (
           shippingAddressId: payload.shippingAddressId,
           billingAddressId: payload.billingAddressId ?? null,
           status: "PENDING",
-          subtotal: vendorSubtotal, // After product discounts, before coupon and shipping
+          subtotal: subtotal,
+          discount: totalDiscount,
           shippingFee: shippingFeePerVendor,
-          discount: vendorCouponDiscount, // Only coupon discount (product discounts are in subtotal)
           tax: 0,
-          total: Math.max(0, vendorGrandTotal),
-          couponId,
+          total: orderTotal,
+          couponId: couponDiscount > 0 ? couponId : null,
           notes: payload.notes ?? null,
         },
       });
 
-      // Create order items with complete discount breakdown
+      // Order items
       for (const item of items) {
         const cartItem = item.cartItem;
-        const finalUnitPrice = item.productDiscountPrice;
-        const totalPrice = finalUnitPrice * cartItem.quantity;
+        const totalCouponForItem =
+          couponBaseTotal > 0
+            ? couponDiscount * (item.couponBase / couponBaseTotal)
+            : 0;
+        const finalUnitPrice = Math.max(
+          0,
+          item.finalUnitPrice - totalCouponForItem,
+        );
+        const totalPrice = round(finalUnitPrice * cartItem.quantity);
 
         await tx.orderItem.create({
           data: {
@@ -313,38 +379,32 @@ const createOrder = async (
             unitPrice: finalUnitPrice,
             totalPrice: totalPrice,
             snapshot: {
-              // Product info
               productId: cartItem.product.id,
               productName: cartItem.product.name,
               productSlug: cartItem.product.slug,
               variantName: cartItem.variant.name,
               variantSku: cartItem.variant.sku,
               vendorName: cartItem.product.vendor?.storeName ?? null,
-
-              // Pricing breakdown
-              originalPrice: item.originalPrice,
-              discountedPrice: item.productDiscountPrice,
-              discountApplied: item.productDiscountApplied,
-              discountType: item.productDiscountType,
-              discountValue: item.productDiscountValue,
-
-              // Discount sources
+              basePrice: item.basePrice,
+              defaultDiscount: item.defaultDiscount,
+              flashSaleDiscount: item.flashSaleDiscount,
+              couponDiscount: couponDiscountPerVendor.get(vendorId) || 0,
+              finalPrice: finalUnitPrice,
+              discountSources: {
+                comparePrice: item.defaultDiscount > 0 ? "comparePrice" : null,
+                flashSale: item.flashSaleId ? "flashSale" : null,
+              },
               flashSaleId: item.flashSaleId,
-              productDiscountId: item.productDiscountId,
-
-              // Timestamp
               appliedAt: new Date().toISOString(),
             },
           },
         });
 
-        // Deduct stock
         await tx.productVariant.update({
           where: { id: cartItem.variantId },
           data: { stock: { decrement: cartItem.quantity } },
         });
 
-        // Inventory log
         await tx.inventoryLog.create({
           data: {
             variantId: cartItem.variantId,
@@ -354,13 +414,11 @@ const createOrder = async (
           },
         });
 
-        // Update product total sold
         await tx.product.update({
           where: { id: cartItem.productId },
           data: { totalSold: { increment: cartItem.quantity } },
         });
 
-        // Update flash sale sold count if applicable
         if (item.flashSaleId) {
           await tx.flashSaleItem.update({
             where: { id: item.flashSaleId },
@@ -369,7 +427,6 @@ const createOrder = async (
         }
       }
 
-      // Order status history
       await tx.orderStatusHistory.create({
         data: {
           orderId: order.id,
@@ -381,13 +438,12 @@ const createOrder = async (
       orders.push(order);
     }
 
-    // ── Coupon usage (only once per checkout) ──────────────
-    if (couponId && createdOrders.length > 0) {
+    if (couponId && orders.length > 0) {
       await tx.couponUsage.create({
         data: {
           couponId,
           userId: user.id,
-          orderId: createdOrders[0].id,
+          orderId: orders[0].id,
         },
       });
       await tx.coupon.update({
@@ -396,43 +452,55 @@ const createOrder = async (
       });
     }
 
-    // ── Clear cart ─────────────────────────────────────────
     await tx.cartItem.deleteMany({ where: { cartId: user.cart!.id } });
 
     return orders;
   });
 
-  // Return each order with full details
+  // ── Return details ───────────────────────────────────────────
   const detailed = await Promise.all(
     createdOrders.map((o) => getOrderById(o.id, user.id, false)),
   );
 
-  // Calculate final summary
   const shippingTotal = shippingFeePerVendor * itemsByVendor.size;
-  const totalAfterAllDiscounts =
-    totalAfterProductDiscount - totalCouponDiscount;
-  const grandTotalWithShipping = totalAfterAllDiscounts + shippingTotal;
+  let grandSubtotal = 0;
+  let grandDiscount = 0;
+  for (const [vendorId, data] of vendorData) {
+    grandSubtotal += data.subtotal;
+    grandDiscount +=
+      data.defaultDiscountTotal +
+      data.flashSaleDiscountTotal +
+      (couponDiscountPerVendor.get(vendorId) || 0);
+  }
+  const grandTotal = round(grandSubtotal - grandDiscount + shippingTotal);
+  const sellingTotal = round(grandSubtotal - grandDiscount);
+  const grandDefaultDiscount = Array.from(vendorData.values()).reduce(
+    (sum, data) => sum + data.defaultDiscountTotal,
+    0,
+  );
+  const grandFlashSaleDiscount = Array.from(vendorData.values()).reduce(
+    (sum, data) => sum + data.flashSaleDiscountTotal,
+    0,
+  );
+  const grandCouponDiscount = Array.from(vendorData.keys()).reduce<number>(
+    (sum, vendorId) => sum + (couponDiscountPerVendor.get(vendorId) || 0),
+    0,
+  );
 
   return {
     orders: detailed,
     orderCount: detailed.length,
     vendorCount: itemsByVendor.size,
-    grandTotal: grandTotalWithShipping,
+    subtotal: grandSubtotal,
+    totalDiscount:
+      grandDefaultDiscount + grandFlashSaleDiscount + grandCouponDiscount,
+    sellingTotal,
+    shippingFee: shippingTotal,
+    grandTotal,
     breakdown: {
-      subtotal: {
-        original: processedItems.reduce(
-          (sum, item) => sum + item.originalPrice * item.cartItem.quantity,
-          0,
-        ),
-        afterProductDiscount: totalAfterProductDiscount,
-      },
-      discounts: {
-        productDiscount: totalProductDiscount,
-        couponDiscount: totalCouponDiscount,
-        totalDiscount: totalProductDiscount + totalCouponDiscount,
-      },
-      shipping: shippingTotal,
-      total: grandTotalWithShipping,
+      defaultDiscount: grandDefaultDiscount,
+      flashSaleDiscount: grandFlashSaleDiscount,
+      couponDiscount: grandCouponDiscount,
     },
     message:
       itemsByVendor.size === 1

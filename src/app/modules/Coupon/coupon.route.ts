@@ -28,6 +28,12 @@ router.get(
   CouponController.getMyCouponHistory,
 );
 
+router.get(
+  "/my-coupons",
+  auth(Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
+  CouponController.getMyCoupons,
+);
+
 // ─────────────────────────────────────────
 // ADMIN ONLY
 // ─────────────────────────────────────────
