@@ -5,20 +5,17 @@ import auth from "../../middlewares/auth";
 import validateRequestFormdata from "../../middlewares/validateRequestFormdataOptionalPhoto";
 import { multerUpload } from "../../../config/multer.config";
 import { Role } from "@prisma/client";
-
 const router = Router();
 
 // ─────────────────────────────────────────
 // CUSTOMER
 // ─────────────────────────────────────────
 
-// apply coupon — called at checkout before order creation
-router.post(
-  "/apply",
+// chk coupon eligibility
+router.get(
+  "/coupon-eligibility/:couponCode",
   auth(Role.CUSTOMER, Role.VENDOR, Role.ADMIN, Role.SUPER_ADMIN),
-  multerUpload.none(),
-  validateRequestFormdata(couponValidation.applyCoupon),
-  CouponController.applyCoupon,
+  CouponController.checkCouponEligibility,
 );
 
 // my coupon usage history

@@ -50,8 +50,9 @@ const getMyCoupons = catchAsync(async (req, res) => {
 });
 
 const getCouponById = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const id = Number(req.params.id);
-  const result = await couponService.getCouponById(id);
+  const result = await couponService.getCouponById(email, id);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -60,26 +61,24 @@ const getCouponById = catchAsync(async (req, res) => {
   });
 });
 
-const applyCoupon = catchAsync(async (req, res) => {
+const checkCouponEligibility = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
-  const data = JSON.parse(req.body.data);
-  const result = await couponService.applyCoupon(
-    email,
-    data.code,
-    data.orderAmount,
-  );
+  const couponCode = req.params.couponCode;
+
+  const result = await couponService.checkCouponEligibility(email, couponCode);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: "Coupon applied successfully",
+    message: "Coupon discount retrived successfully",
     data: result,
   });
 });
 
 const updateCoupon = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const id = Number(req.params.id);
   const data = JSON.parse(req.body.data);
-  const result = await couponService.updateCoupon(id, data);
+  const result = await couponService.updateCoupon(email, id, data);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -89,8 +88,9 @@ const updateCoupon = catchAsync(async (req, res) => {
 });
 
 const toggleCouponStatus = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const id = Number(req.params.id);
-  const result = await couponService.toggleCouponStatus(id);
+  const result = await couponService.toggleCouponStatus(email, id);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -100,8 +100,9 @@ const toggleCouponStatus = catchAsync(async (req, res) => {
 });
 
 const deleteCoupon = catchAsync(async (req, res) => {
+  const { email } = req.user as { email: string };
   const id = Number(req.params.id);
-  await couponService.deleteCoupon(id);
+  await couponService.deleteCoupon(email, id);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -126,7 +127,7 @@ export const CouponController = {
   getAllCoupons,
   getMyCoupons,
   getCouponById,
-  applyCoupon,
+  checkCouponEligibility,
   updateCoupon,
   toggleCouponStatus,
   deleteCoupon,

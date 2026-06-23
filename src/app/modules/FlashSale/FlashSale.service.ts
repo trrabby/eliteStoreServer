@@ -285,7 +285,9 @@ const getMyFlashSales = async (
   const limit = query.limit ?? 20;
   const skip = (page - 1) * limit;
 
-  const where: any = { vendorId: user.vendorProfile.id };
+  const where: any = {
+    OR: [{ vendorId: user.vendorProfile.id }, { vendorId: null }],
+  };
   if (query.status) where.status = query.status;
 
   const [sales, total] = await Promise.all([
