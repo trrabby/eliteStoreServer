@@ -23,18 +23,18 @@ const sslSuccess = catchAsync(async (req, res) => {
   const result = await paymentService.handleSSLSuccess(req.body);
   // redirect to frontend success page
   res.redirect(
-    `${process.env.FRONTEND_URL}/payment/success?orderNumber=${result.orderNumber}`,
+    `${process.env.FRONTEND_URL}/checkout/payment/success?orderNumber=${result.orderNumber}`,
   );
 });
 
 const sslFail = catchAsync(async (req, res) => {
   await paymentService.handleSSLFail(req.body);
-  res.redirect(`${process.env.FRONTEND_URL}/payment/failed`);
+  res.redirect(`${process.env.FRONTEND_URL}/checkout/payment/failed`);
 });
 
 const sslCancel = catchAsync(async (req, res) => {
   await paymentService.handleSSLCancel(req.body);
-  res.redirect(`${process.env.FRONTEND_URL}/payment/cancelled`);
+  res.redirect(`${process.env.FRONTEND_URL}/checkout/payment/cancelled`);
 });
 
 const sslIpn = catchAsync(async (req, res) => {
@@ -58,10 +58,10 @@ const bkashCallback = catchAsync(async (req, res) => {
       orderId,
     });
     res.redirect(
-      `${process.env.FRONTEND_URL}/payment/success?orderNumber=${result.orderNumber}`,
+      `${process.env.FRONTEND_URL}/checkout/payment/success?orderNumber=${result.orderNumber}`,
     );
   } catch {
-    res.redirect(`${process.env.FRONTEND_URL}/payment/failed`);
+    res.redirect(`${process.env.FRONTEND_URL}/checkout/payment/failed`);
   }
 });
 
@@ -77,10 +77,10 @@ const nagadCallback = catchAsync(async (req, res) => {
   try {
     const result = await paymentService.handleNagadCallback(query);
     res.redirect(
-      `${process.env.FRONTEND_URL}/payment/success?orderNumber=${result.orderNumber}`,
+      `${process.env.FRONTEND_URL}/checkout/payment/success?orderNumber=${result.orderNumber}`,
     );
   } catch {
-    res.redirect(`${process.env.FRONTEND_URL}/payment/failed`);
+    res.redirect(`${process.env.FRONTEND_URL}/checkout/payment/failed`);
   }
 });
 

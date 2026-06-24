@@ -6,6 +6,7 @@ const createOrder = z.object({
       .number()
       .int()
       .positive("Shipping address is required"),
+    shippingFeeFromClient: z.string().optional(),
     billingAddressId: z.number().int().positive().optional(),
     couponCode: z.string().optional(),
     notes: z.string().optional(),

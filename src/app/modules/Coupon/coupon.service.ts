@@ -680,7 +680,8 @@ const updateCoupon = async (
   if (!coupon) throw new AppError(httpStatus.NOT_FOUND, "Coupon not found");
 
   // Authorization
-  if (user.role !== "ADMIN") {
+
+  if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
     if (!user.vendorProfileId) {
       throw new AppError(
         httpStatus.FORBIDDEN,
@@ -723,7 +724,7 @@ const toggleCouponStatus = async (email: string, id: number) => {
   const coupon = await prisma.coupon.findUnique({ where: { id } });
   if (!coupon) throw new AppError(httpStatus.NOT_FOUND, "Coupon not found");
 
-  if (user.role !== "ADMIN") {
+  if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
     if (!user.vendorProfileId) {
       throw new AppError(
         httpStatus.FORBIDDEN,
@@ -755,7 +756,7 @@ const deleteCoupon = async (email: string, id: number) => {
   });
   if (!coupon) throw new AppError(httpStatus.NOT_FOUND, "Coupon not found");
 
-  if (user.role !== "ADMIN") {
+  if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
     if (!user.vendorProfileId) {
       throw new AppError(
         httpStatus.FORBIDDEN,

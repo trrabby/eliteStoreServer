@@ -22,53 +22,6 @@ export type GatewayPaymentPayload = {
 // SSLCOMMERZ
 // ─────────────────────────────────────────
 
-// export const initiateSSLPayment = async (
-//   payload: GatewayPaymentPayload,
-// ): Promise<{
-//   gatewayUrl: string;
-//   sessionKey: string;
-//   transactionId: string;
-// }> => {
-//   const cfg = gatewayConfig.sslcommerz;
-//   const tranId = `${payload.orderNumber}-${Date.now()}`;
-//   const data = {
-//     store_id: cfg.storeId,
-//     store_passwd: cfg.storePass,
-//     total_amount: payload.amount,
-//     currency: payload.currency,
-//     tran_id: tranId,
-//     success_url: cfg.successUrl,
-//     fail_url: cfg.failUrl,
-//     cancel_url: cfg.cancelUrl,
-//     ipn_url: cfg.ipnUrl,
-//     cus_name: payload.customerName,
-//     cus_email: payload.customerEmail,
-//     cus_phone: payload.customerPhone,
-//     cus_add1: "Bangladesh",
-//     cus_city: "Dhaka",
-//     cus_country: "Bangladesh",
-//     shipping_method: "NO",
-//     product_name: `Order #${payload.orderNumber}`,
-//     product_category: "General",
-//     product_profile: "general",
-//   };
-
-//   const response = await axios.post(cfg.paymentApi, data, {
-//     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-//   });
-
-//   if (response.data?.status !== "SUCCESS") {
-//     throw new Error(
-//       response.data?.failedreason || "SSLCommerz initiation failed",
-//     );
-//   }
-
-//   return {
-//     gatewayUrl: response.data.GatewayPageURL,
-//     sessionKey: response.data.sessionkey,
-//     transactionId: tranId,
-//   };
-// };
 export const initiateSSLPayment = async (
   payload: GatewayPaymentPayload,
 ): Promise<{
