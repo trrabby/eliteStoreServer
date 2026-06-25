@@ -31,6 +31,9 @@ const isValidStatusTransition = (current: string, next: string): boolean => {
   return transitions[current]?.includes(next) ?? false;
 };
 
+// filter keys for listing orders
+type FilterKey = "ALL" | "TO_PAY" | "TO_SHIP" | "TO_RECEIVE" | "TO_REVIEW";
+
 // ─────────────────────────────────────────
 // SERVICES
 // ─────────────────────────────────────────
@@ -906,23 +909,60 @@ const getMyVendorOrders = async (
 // get my orders — customer
 const getMyOrders = async (
   email: string,
-  query: { page?: number; limit?: number; status?: string },
+  query: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    filter?: string; // "TO_PAY" | "TO_SHIP" | "TO_RECEIVE" | "TO_REVIEW" | "ALL"
+    includeCounts?: boolean; // if true, returns counts for all filters
+  },
 ) => {
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
+    select: { id: true },
   });
-
-  if (!user) {
-    throw new AppError(httpStatus.NOT_FOUND, "User not found");
-  }
+  if (!user) throw new AppError(httpStatus.NOT_FOUND, "User not found");
 
   const page = query.page ?? 1;
   const limit = query.limit ?? 10;
   const skip = (page - 1) * limit;
 
   const where: any = { userId: user.id };
-  if (query.status) where.status = query.status;
 
+  // Build filter conditions
+  let filterCondition = (filter: string): any => {
+    switch (filter) {
+      case "TO_PAY":
+        return {
+          AND: [
+            { status: { in: ["PENDING", "CONFIRMED"] as any } },
+            {
+              OR: [
+                { payment: null },
+                { payment: { status: { not: "SUCCESS" as any } } },
+              ],
+            },
+          ],
+        };
+      case "TO_SHIP":
+        return { status: { in: ["CONFIRMED", "PROCESSING"] as any } };
+      case "TO_RECEIVE":
+        return { status: "SHIPPED" as any };
+      case "TO_REVIEW":
+        return { status: "DELIVERED" as any };
+      default:
+        return {}; // ALL
+    }
+  };
+
+  if (query.filter) {
+    const cond = filterCondition(query.filter);
+    Object.assign(where, cond);
+  } else if (query.status) {
+    where.status = query.status;
+  }
+
+  // Get paginated orders
   const [orders, total] = await Promise.all([
     prisma.order.findMany({
       where,
@@ -941,15 +981,14 @@ const getMyOrders = async (
         createdAt: true,
         deliveredAt: true,
         items: {
-          // take: 3, // preview first 3 items
           select: {
             id: true,
             quantity: true,
             unitPrice: true,
             snapshot: true,
           },
+          take: 3,
         },
-
         payment: {
           select: { status: true, method: true },
         },
@@ -962,7 +1001,31 @@ const getMyOrders = async (
     prisma.order.count({ where }),
   ]);
 
-  return { total, page, limit, orders };
+  let counts: Record<string, number> | undefined;
+  if (query.includeCounts) {
+    // Compute counts for each filter
+    const filterKeys: FilterKey[] = [
+      "ALL",
+      "TO_PAY",
+      "TO_SHIP",
+      "TO_RECEIVE",
+      "TO_REVIEW",
+    ];
+    const countPromises = filterKeys.map((key) => {
+      const cond = key === "ALL" ? {} : filterCondition(key);
+      return prisma.order.count({ where: { userId: user.id, ...cond } });
+    });
+    const results = await Promise.all(countPromises);
+    counts = {
+      ALL: results[0],
+      TO_PAY: results[1],
+      TO_SHIP: results[2],
+      TO_RECEIVE: results[3],
+      TO_REVIEW: results[4],
+    };
+  }
+
+  return { total, page, limit, orders, counts };
 };
 
 // get order by id — internal helper

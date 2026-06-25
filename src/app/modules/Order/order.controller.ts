@@ -111,12 +111,14 @@ const getMyVendorOrders = catchAsync(async (req, res) => {
 
 const getMyOrders = catchAsync(async (req, res) => {
   const { email } = req.user as { email: string };
-  const { page, limit, status } = req.query;
+  const { page, limit, status, filter, includeCounts } = req.query;
 
   const result = await orderService.getMyOrders(email, {
     page: page ? Number(page) : undefined,
     limit: limit ? Number(limit) : undefined,
     status: status ? String(status) : undefined,
+    filter: filter ? String(filter) : undefined,
+    includeCounts: includeCounts === "true",
   });
 
   sendResponse(res, {

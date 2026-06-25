@@ -38,25 +38,25 @@ const getWishlist = async (email: string) => {
         include: {
           product: {
             select: {
-              id:               true,
-              publicId:         true,
-              name:             true,
-              slug:             true,
-              status:           true,
-              averageRating:    true,
-              reviewCount:      true,
+              id: true,
+              publicId: true,
+              name: true,
+              slug: true,
+              status: true,
+              averageRating: true,
+              reviewCount: true,
               images: {
-                where:  { isPrimary: true },
-                take:   1,
+                where: { isPrimary: true },
+                take: 1,
                 select: { url: true, altText: true },
               },
               variants: {
-                where:  { isDefault: true, isActive: true },
-                take:   1,
+                where: { isDefault: true, isActive: true },
+                take: 1,
                 select: {
-                  price:        true,
+                  price: true,
                   comparePrice: true,
-                  stock:        true,
+                  stock: true,
                 },
               },
               brand: {
@@ -73,14 +73,14 @@ const getWishlist = async (email: string) => {
   // no wishlist yet — return empty
   if (!wishlist) {
     return {
-      items:     [],
+      items: [],
       itemCount: 0,
     };
   }
 
   return {
-    id:        wishlist.id,
-    items:     wishlist.items,
+    id: wishlist.id,
+    items: wishlist.items,
     itemCount: wishlist.items.length,
   };
 };
@@ -119,7 +119,7 @@ const addToWishlist = async (email: string, productId: number) => {
   if (existingItem) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      "Product is already in your wishlist"
+      "Product is already in your wishlist",
     );
   }
 
@@ -134,7 +134,7 @@ const addToWishlist = async (email: string, productId: number) => {
     // increment product wishlist count
     await tx.product.update({
       where: { id: productId },
-      data:  { wishlistCount: { increment: 1 } },
+      data: { wishlistCount: { increment: 1 } },
     });
 
     return created;
@@ -240,7 +240,7 @@ const toggleWishlist = async (email: string, productId: number) => {
       });
       await tx.product.update({
         where: { id: productId },
-        data:  { wishlistCount: { decrement: 1 } },
+        data: { wishlistCount: { decrement: 1 } },
       });
     });
 
@@ -254,7 +254,7 @@ const toggleWishlist = async (email: string, productId: number) => {
     });
     await tx.product.update({
       where: { id: productId },
-      data:  { wishlistCount: { increment: 1 } },
+      data: { wishlistCount: { increment: 1 } },
     });
   });
 
@@ -325,22 +325,19 @@ const moveToCart = async (email: string, productId: number) => {
     where: {
       productId,
       isDefault: true,
-      isActive:  true,
+      isActive: true,
     },
   });
 
   if (!defaultVariant) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      "No active variant found for this product"
+      "No active variant found for this product",
     );
   }
 
   if (defaultVariant.stock < 1) {
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      "Product is out of stock"
-    );
+    throw new AppError(httpStatus.BAD_REQUEST, "Product is out of stock");
   }
 
   // get or create cart
@@ -354,7 +351,7 @@ const moveToCart = async (email: string, productId: number) => {
     const existing = await tx.cartItem.findUnique({
       where: {
         cartId_variantId: {
-          cartId:    cart!.id,
+          cartId: cart!.id,
           variantId: defaultVariant.id,
         },
       },
@@ -364,7 +361,7 @@ const moveToCart = async (email: string, productId: number) => {
       await tx.cartItem.update({
         where: {
           cartId_variantId: {
-            cartId:    cart!.id,
+            cartId: cart!.id,
             variantId: defaultVariant.id,
           },
         },
@@ -373,10 +370,10 @@ const moveToCart = async (email: string, productId: number) => {
     } else {
       await tx.cartItem.create({
         data: {
-          cartId:    cart!.id,
+          cartId: cart!.id,
           productId,
           variantId: defaultVariant.id,
-          quantity:  1,
+          quantity: 1,
         },
       });
     }
@@ -394,7 +391,7 @@ const moveToCart = async (email: string, productId: number) => {
     // decrement wishlist count
     await tx.product.update({
       where: { id: productId },
-      data:  { wishlistCount: { decrement: 1 } },
+      data: { wishlistCount: { decrement: 1 } },
     });
   });
 
@@ -426,9 +423,9 @@ const clearWishlist = async (email: string) => {
       wishlist.items.map((item) =>
         tx.product.update({
           where: { id: item.productId },
-          data:  { wishlistCount: { decrement: 1 } },
-        })
-      )
+          data: { wishlistCount: { decrement: 1 } },
+        }),
+      ),
     );
 
     await tx.wishlistItem.deleteMany({
