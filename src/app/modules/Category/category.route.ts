@@ -16,7 +16,7 @@ const router = Router();
 router.get("/tree", CategoryController.getCategoryTree);
 
 // single by slug — for category page
-router.get("/:slug", CategoryController.getCategoryBySlug);
+router.get("/slug/:slug", CategoryController.getCategoryBySlug);
 
 // ─────────────────────────────────────────
 // ADMIN ONLY

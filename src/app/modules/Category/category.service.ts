@@ -108,19 +108,33 @@ const getCategoryTree = async () => {
       parentId: null,
       isActive: true,
     },
-    orderBy: { sortOrder: "asc" },
+    orderBy: {
+      sortOrder: "asc",
+    },
     include: {
       children: {
-        where: { isActive: true },
-        orderBy: { sortOrder: "asc" },
+        where: {
+          isActive: true,
+        },
+        orderBy: {
+          sortOrder: "asc",
+        },
         include: {
           children: {
-            where: { isActive: true },
-            orderBy: { sortOrder: "asc" },
+            where: {
+              isActive: true,
+            },
+            orderBy: {
+              sortOrder: "asc",
+            },
             include: {
               children: {
-                where: { isActive: true },
-                orderBy: { sortOrder: "asc" },
+                where: {
+                  isActive: true,
+                },
+                orderBy: {
+                  sortOrder: "asc",
+                },
               },
             },
           },
@@ -129,7 +143,82 @@ const getCategoryTree = async () => {
     },
   });
 
-  return roots;
+  // ----------------------------------------
+  // Get all active product-category mappings
+  // ----------------------------------------
+  const productCategories = await prisma.productCategory.findMany({
+    where: {
+      product: {
+        status: "ACTIVE",
+      },
+    },
+    select: {
+      categoryId: true,
+      productId: true,
+    },
+  });
+
+  // categoryId -> unique productIds
+  const productMap = new Map<number, Set<number>>();
+
+  productCategories.forEach((pc) => {
+    if (!productMap.has(pc.categoryId)) {
+      productMap.set(pc.categoryId, new Set());
+    }
+
+    productMap.get(pc.categoryId)!.add(pc.productId);
+  });
+
+  // ----------------------------------------
+  // Recursive calculator
+  // ----------------------------------------
+  const calculateCounts = (category: any) => {
+    const ownProducts = new Set(productMap.get(category.id) ?? []);
+
+    let subcategoryCount = category.children.length;
+
+    category.children = category.children.map((child: any) => {
+      const updatedChild = calculateCounts(child);
+
+      updatedChild.productIds.forEach((id: number) => ownProducts.add(id));
+
+      subcategoryCount += updatedChild.subcategoryCount;
+
+      return updatedChild;
+    });
+
+    return {
+      ...category,
+      productCount: ownProducts.size,
+      subcategoryCount,
+      productIds: ownProducts,
+    };
+  };
+
+  const tree = roots.map(calculateCounts);
+
+  // remove helper property before returning
+  const cleanTree = (category: any) => ({
+    id: category.id,
+    name: category.name,
+    slug: category.slug,
+    description: category.description,
+    image: category.image,
+    icon: category.icon,
+    parentId: category.parentId,
+    depth: category.depth,
+    sortOrder: category.sortOrder,
+    isActive: category.isActive,
+    metaTitle: category.metaTitle,
+    metaDesc: category.metaDesc,
+    createdAt: category.createdAt,
+    updatedAt: category.updatedAt,
+    productCount: category.productCount,
+    subcategoryCount: category.subcategoryCount,
+    children: category.children.map(cleanTree),
+  });
+
+  return tree.map(cleanTree);
 };
 
 // get all categories flat — admin
@@ -177,17 +266,28 @@ const getAllCategoriesFlat = async (query: {
   return { total, page, limit, categories };
 };
 
-// get single category by slug — public
 const getCategoryBySlug = async (slug: string) => {
   const category = await prisma.category.findUnique({
-    where: { slug, isActive: true },
+    where: {
+      slug,
+      isActive: true,
+    },
     include: {
       parent: {
-        select: { id: true, name: true, slug: true, depth: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          depth: true,
+        },
       },
       children: {
-        where: { isActive: true },
-        orderBy: { sortOrder: "asc" },
+        where: {
+          isActive: true,
+        },
+        orderBy: {
+          sortOrder: "asc",
+        },
         select: {
           id: true,
           name: true,
@@ -195,11 +295,7 @@ const getCategoryBySlug = async (slug: string) => {
           image: true,
           icon: true,
           depth: true,
-          _count: { select: { children: true, products: true } },
         },
-      },
-      _count: {
-        select: { products: true, children: true },
       },
     },
   });
@@ -208,7 +304,107 @@ const getCategoryBySlug = async (slug: string) => {
     throw new AppError(httpStatus.NOT_FOUND, "Category not found");
   }
 
-  return category;
+  // ----------------------------------------------------
+  // Get all categories once
+  // ----------------------------------------------------
+  const allCategories = await prisma.category.findMany({
+    where: {
+      isActive: true,
+    },
+    select: {
+      id: true,
+      parentId: true,
+    },
+  });
+
+  // ----------------------------------------------------
+  // Build parent -> children map
+  // ----------------------------------------------------
+  const childrenMap = new Map<number, number[]>();
+
+  allCategories.forEach((cat) => {
+    if (cat.parentId !== null) {
+      if (!childrenMap.has(cat.parentId)) {
+        childrenMap.set(cat.parentId, []);
+      }
+
+      childrenMap.get(cat.parentId)!.push(cat.id);
+    }
+  });
+
+  // ----------------------------------------------------
+  // Get all descendant ids
+  // ----------------------------------------------------
+  const getDescendantIds = (categoryId: number): number[] => {
+    const descendants: number[] = [];
+
+    const dfs = (id: number) => {
+      const children = childrenMap.get(id) || [];
+
+      for (const child of children) {
+        descendants.push(child);
+        dfs(child);
+      }
+    };
+
+    dfs(categoryId);
+
+    return descendants;
+  };
+
+  // ----------------------------------------------------
+  // Helper for counts
+  // ----------------------------------------------------
+  const getCounts = async (categoryId: number) => {
+    const descendants = getDescendantIds(categoryId);
+
+    const categoryIds = [categoryId, ...descendants];
+
+    const productCount = await prisma.product.count({
+      where: {
+        categories: {
+          some: {
+            categoryId: {
+              in: categoryIds,
+            },
+          },
+        },
+        status: "ACTIVE",
+      },
+    });
+
+    return {
+      productCount,
+      subcategoryCount: descendants.length,
+    };
+  };
+
+  // ----------------------------------------------------
+  // Root category counts
+  // ----------------------------------------------------
+  const rootCounts = await getCounts(category.id);
+
+  // ----------------------------------------------------
+  // Child counts
+  // ----------------------------------------------------
+  const children = await Promise.all(
+    category.children.map(async (child) => {
+      const counts = await getCounts(child.id);
+
+      return {
+        ...child,
+        productCount: counts.productCount,
+        subcategoryCount: counts.subcategoryCount,
+      };
+    }),
+  );
+
+  return {
+    ...category,
+    productCount: rootCounts.productCount,
+    subcategoryCount: rootCounts.subcategoryCount,
+    children,
+  };
 };
 
 // get category by id — admin

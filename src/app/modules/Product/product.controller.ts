@@ -35,6 +35,17 @@ const getAllProducts = catchAsync(async (req, res) => {
     sortBy,
     tags,
     minRating,
+
+    // NEW GRANULAR FILTERS FROM REQ.QUERY
+    productSlug,
+    productTag,
+    brandName,
+    brandSlug,
+    categoryName,
+    categorySlug,
+    variantName,
+    variantSku,
+    vendorName,
   } = req.query;
 
   const normalizeToNumberArray = (value: any): number[] | undefined => {
@@ -67,6 +78,17 @@ const getAllProducts = catchAsync(async (req, res) => {
 
     tags: tags ? String(tags).split(",") : undefined,
     minRating: minRating ? Number(minRating) : undefined,
+
+    // PASSING THE NEW DEEP LOOKUP FILTERS CLEANLY CASTE AS STRINGS
+    productSlug: productSlug ? String(productSlug) : undefined,
+    productTag: productTag ? String(productTag) : undefined,
+    brandName: brandName ? String(brandName) : undefined,
+    brandSlug: brandSlug ? String(brandSlug) : undefined,
+    categoryName: categoryName ? String(categoryName) : undefined,
+    categorySlug: categorySlug ? String(categorySlug) : undefined,
+    variantName: variantName ? String(variantName) : undefined,
+    variantSku: variantSku ? String(variantSku) : undefined,
+    vendorName: vendorName ? String(vendorName) : undefined,
   });
 
   sendResponse(res, {

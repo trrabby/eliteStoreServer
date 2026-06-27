@@ -165,175 +165,7 @@ const createProduct = async (
   return { product, ...message };
 };
 
-// get all products — public with filters
-// const getAllProducts = async (query: {
-//   page?: number;
-//   limit?: number;
-//   status?: string;
-//   brandIds?: number[];
-//   vendorId?: number;
-//   categoryIds?: number[];
-//   isFeatured?: boolean;
-//   minPrice?: number;
-//   maxPrice?: number;
-//   search?: string;
-//   tags?: string[];
-//   sortBy?: string;
-//   minRating?: number;
-// }) => {
-//   const page = query.page ?? 1;
-//   const limit = query.limit ?? 20;
-//   const skip = (page - 1) * limit;
-
-//   const where: any = {};
-
-//   // ─────────────────────────
-//   // SIMPLE FILTERS
-//   // ─────────────────────────
-//   if (query.status) where.status = query.status;
-//   if (query.vendorId) where.vendorId = query.vendorId;
-//   if (query.isFeatured !== undefined) where.isFeatured = query.isFeatured;
-
-//   // ─────────────────────────
-//   // BRAND FILTER (MULTI)
-//   // ─────────────────────────
-//   if (query.brandIds?.length) {
-//     where.brandId = { in: query.brandIds };
-//   }
-
-//   // ─────────────────────────
-//   // CATEGORY FILTER (M2M RELATION)
-//   // ─────────────────────────
-//   if (query.categoryIds?.length) {
-//     where.categories = {
-//       some: {
-//         categoryId: { in: query.categoryIds },
-//       },
-//     };
-//   }
-
-//   // ─────────────────────────
-//   // TAGS FILTER
-//   // ─────────────────────────
-//   if (query.tags?.length) {
-//     where.tags = { hasSome: query.tags };
-//   }
-
-//   // ─────────────────────────
-//   // SEARCH FILTER
-//   // ─────────────────────────
-//   if (query.search) {
-//     where.OR = [
-//       { name: { contains: query.search, mode: "insensitive" } },
-//       { shortDescription: { contains: query.search, mode: "insensitive" } },
-//       { tags: { has: query.search } },
-//     ];
-//   }
-
-//   // ─────────────────────────
-//   // PRICE FILTER
-//   // ─────────────────────────
-//   if (query.minPrice !== undefined || query.maxPrice !== undefined) {
-//     where.variants = {
-//       some: {
-//         price: {
-//           ...(query.minPrice !== undefined && { gte: query.minPrice }),
-//           ...(query.maxPrice !== undefined && { lte: query.maxPrice }),
-//         },
-//         isActive: true,
-//       },
-//     };
-//   }
-
-//   if (query.minRating !== undefined) {
-//     where.averageRating = {
-//       gte: query.minRating,
-//     };
-
-//     // optional but recommended for data integrity
-//     where.reviewCount = {
-//       gt: 0,
-//     };
-//   }
-
-//   // ─────────────────────────
-//   // SORTING
-//   // ─────────────────────────
-//   let orderBy: any = { createdAt: "desc" };
-
-//   if (query.sortBy === "rating") orderBy = { averageRating: "desc" };
-//   if (query.sortBy === "popular") orderBy = { totalSold: "desc" };
-//   if (query.sortBy === "newest") orderBy = { createdAt: "desc" };
-
-//   // ─────────────────────────
-//   // QUERY EXECUTION
-//   // ─────────────────────────
-//   const [products, total] = await Promise.all([
-//     prisma.product.findMany({
-//       where,
-//       skip,
-//       take: limit,
-//       orderBy,
-//       select: {
-//         id: true,
-//         publicId: true,
-//         name: true,
-//         slug: true,
-//         shortDescription: true,
-//         status: true,
-//         isFeatured: true,
-//         averageRating: true,
-//         reviewCount: true,
-//         totalSold: true,
-//         tags: true,
-//         createdAt: true,
-
-//         brand: {
-//           select: { id: true, name: true, slug: true, logo: true },
-//         },
-
-//         categories: {
-//           select: {
-//             category: {
-//               select: { id: true, name: true, slug: true },
-//             },
-//           },
-//         },
-
-//         images: {
-//           where: { isPrimary: true },
-//           take: 1,
-//           select: { url: true, altText: true },
-//         },
-
-//         variants: {
-//           where: { isDefault: true, isActive: true },
-//           take: 1,
-//           select: {
-//             id: true, // ← ADD THIS
-//             price: true,
-//             comparePrice: true,
-//             stock: true,
-//           },
-//         },
-//         flashSaleItem: {
-//           include: {
-//             flashSale: {
-//               select: { title: true, endsAt: true, status: true },
-//             },
-//           },
-//         },
-//       },
-//     }),
-
-//     prisma.product.count({ where }),
-//   ]);
-
-//   return { total, page, limit, products };
-// };
-// getProducts.service.ts
-
-const getAllProducts = async (query: {
+type ProductQueryInput = {
   page?: number;
   limit?: number;
   status?: string;
@@ -347,7 +179,20 @@ const getAllProducts = async (query: {
   tags?: string[];
   sortBy?: string;
   minRating?: number;
-}) => {
+
+  // NEW GRANULAR QUERY FILTERS
+  productSlug?: string;
+  productTag?: string;
+  brandName?: string;
+  brandSlug?: string;
+  categoryName?: string;
+  categorySlug?: string;
+  variantName?: string;
+  variantSku?: string;
+  vendorName?: string;
+};
+
+const getAllProducts = async (query: ProductQueryInput) => {
   const page = query.page ?? 1;
   const limit = query.limit ?? 20;
   const skip = (page - 1) * limit;
@@ -377,30 +222,211 @@ const getAllProducts = async (query: {
     where.tags = { hasSome: query.tags };
   }
 
-  if (query.search) {
-    where.OR = [
-      { name: { contains: query.search, mode: "insensitive" } },
-      { shortDescription: { contains: query.search, mode: "insensitive" } },
-      { tags: { has: query.search } },
-    ];
-  }
-
-  if (query.minPrice !== undefined || query.maxPrice !== undefined) {
-    where.variants = {
-      some: {
-        price: {
-          ...(query.minPrice !== undefined && { gte: query.minPrice }),
-          ...(query.maxPrice !== undefined && { lte: query.maxPrice }),
-        },
-        isActive: true,
-      },
-    };
-  }
-
   if (query.minRating !== undefined) {
     where.averageRating = { gte: query.minRating };
     where.reviewCount = { gt: 0 };
   }
+
+  // ============================================
+  // SPECIFIC TARGETED EXTENDED FILTERS
+  // ============================================
+  if (query.productSlug) {
+    where.slug = { equals: query.productSlug, mode: "insensitive" };
+  }
+
+  if (query.productTag) {
+    where.tags = { has: query.productTag };
+  }
+
+  if (query.brandName) {
+    where.brand = {
+      ...where.brand,
+      name: { contains: query.brandName, mode: "insensitive" },
+    };
+  }
+
+  if (query.brandSlug) {
+    where.brand = {
+      ...where.brand,
+      slug: { equals: query.brandSlug, mode: "insensitive" },
+    };
+  }
+
+  if (query.categoryName) {
+    where.categories = {
+      some: {
+        category: {
+          name: { contains: query.categoryName, mode: "insensitive" },
+        },
+      },
+    };
+  }
+
+  if (query.categorySlug) {
+    where.categories = {
+      some: {
+        category: {
+          slug: { equals: query.categorySlug, mode: "insensitive" },
+        },
+      },
+    };
+  }
+
+  if (query.vendorName) {
+    where.vendor = {
+      storeName: { contains: query.vendorName, mode: "insensitive" },
+    };
+  }
+
+  // Handle specific variant conditions cleanly alongside price filters if present
+  if (
+    query.variantSku ||
+    query.variantName ||
+    query.minPrice !== undefined ||
+    query.maxPrice !== undefined
+  ) {
+    where.variants = {
+      some: {
+        ...(where.variants?.some || {}),
+        isActive: true,
+        ...(query.variantSku && {
+          sku: { contains: query.variantSku, mode: "insensitive" },
+        }),
+        ...(query.variantName && {
+          name: { contains: query.variantName, mode: "insensitive" },
+        }),
+        ...((query.minPrice !== undefined || query.maxPrice !== undefined) && {
+          price: {
+            ...(query.minPrice !== undefined && { gte: query.minPrice }),
+            ...(query.maxPrice !== undefined && { lte: query.maxPrice }),
+          },
+        }),
+      },
+    };
+  }
+
+  // ============================================
+  // GLOBAL SEARCH ROUTER (FUZZY LOOKUPS)
+  // ============================================
+  if (query.search) {
+    where.OR = [
+      { name: { contains: query.search, mode: "insensitive" } },
+      { slug: { contains: query.search, mode: "insensitive" } },
+      { shortDescription: { contains: query.search, mode: "insensitive" } },
+      { description: { contains: query.search, mode: "insensitive" } },
+      { tags: { has: query.search } },
+      {
+        brand: {
+          OR: [
+            { name: { contains: query.search, mode: "insensitive" } },
+            { slug: { contains: query.search, mode: "insensitive" } },
+          ],
+        },
+      },
+      {
+        categories: {
+          some: {
+            category: {
+              OR: [
+                { name: { contains: query.search, mode: "insensitive" } },
+                { slug: { contains: query.search, mode: "insensitive" } },
+              ],
+            },
+          },
+        },
+      },
+      {
+        variants: {
+          some: {
+            OR: [
+              { name: { contains: query.search, mode: "insensitive" } },
+              { sku: { contains: query.search, mode: "insensitive" } },
+            ],
+          },
+        },
+      },
+      {
+        vendor: {
+          OR: [
+            { storeName: { contains: query.search, mode: "insensitive" } },
+            { slug: { contains: query.search, mode: "insensitive" } },
+          ],
+        },
+      },
+    ];
+  }
+
+  // ============================================
+  // SELECT BLOCK DEFINITION
+  // ============================================
+  const selectFields = {
+    id: true,
+    publicId: true,
+    name: true,
+    slug: true,
+    shortDescription: true,
+    status: true,
+    isFeatured: true,
+    averageRating: true,
+    reviewCount: true,
+    totalSold: true,
+    tags: true,
+    createdAt: true,
+    brand: {
+      select: { id: true, name: true, slug: true, logo: true },
+    },
+    categories: {
+      select: {
+        category: {
+          select: { id: true, name: true, slug: true },
+        },
+      },
+    },
+    images: {
+      where: { isPrimary: true },
+      take: 1,
+      select: { url: true, altText: true },
+    },
+    variants: {
+      where: { isActive: true },
+      select: {
+        id: true,
+        price: true,
+        comparePrice: true,
+        stock: true,
+        images: true,
+        isDefault: true,
+        name: true,
+        sku: true,
+      },
+    },
+    // cast as any to satisfy Prisma client TS types for enum/field-ref filters
+    flashSaleItem: {
+      where: {
+        isActive: true,
+        flashSale: {
+          is: {
+            status: { equals: "ACTIVE" },
+            startsAt: { lte: new Date() },
+            endsAt: { gte: new Date() },
+          },
+        },
+      },
+      select: {
+        discountType: true,
+        discountValue: true,
+        salePrice: true,
+        originalPrice: true,
+        flashSale: {
+          select: {
+            title: true,
+            endsAt: true,
+            status: true,
+          },
+        },
+      },
+    } as any,
+  };
 
   // ============================================
   // HANDLE PRICE SORTING
@@ -411,111 +437,37 @@ const getAllProducts = async (query: {
   if (needsPriceSorting) {
     const allProducts = await prisma.product.findMany({
       where,
-      select: {
-        id: true,
-        publicId: true,
-        name: true,
-        slug: true,
-        shortDescription: true,
-        status: true,
-        isFeatured: true,
-        averageRating: true,
-        reviewCount: true,
-        totalSold: true,
-        tags: true,
-        createdAt: true,
-        brand: {
-          select: { id: true, name: true, slug: true, logo: true },
-        },
-        categories: {
-          select: {
-            category: {
-              select: { id: true, name: true, slug: true },
-            },
-          },
-        },
-        images: {
-          where: { isPrimary: true },
-          take: 1,
-          select: { url: true, altText: true },
-        },
-        variants: {
-          where: { isActive: true },
-          select: {
-            id: true,
-            price: true,
-            comparePrice: true,
-            stock: true,
-            images: true,
-            isDefault: true,
-          },
-        },
-        flashSaleItem: {
-          where: {
-            isActive: true,
-            flashSale: {
-              status: "ACTIVE",
-              startsAt: { lte: new Date() },
-              endsAt: { gte: new Date() },
-            },
-          },
-          select: {
-            discountType: true,
-            discountValue: true,
-            salePrice: true,
-            originalPrice: true,
-            flashSale: {
-              select: {
-                title: true,
-                endsAt: true,
-                status: true,
-              },
-            },
-          },
-        },
-      },
+      select: selectFields,
     });
 
-    // Helper function to get the effective price (considering flash sale)
     const getEffectivePrice = (product: any): number => {
-      // Get default variant
       const defaultVariant =
         product.variants.find((v: any) => v.isDefault) || product.variants[0];
 
-      if (!defaultVariant) {
-        return Infinity;
-      }
-
-      // If product has an active flash sale item, use the sale price
-      if (product.flashSaleItem && product.flashSaleItem.salePrice) {
+      if (!defaultVariant) return Infinity;
+      if (product.flashSaleItem?.salePrice) {
         return Number(product.flashSaleItem.salePrice);
       }
-
-      // Otherwise use the default variant price
       return Number(defaultVariant.price);
     };
 
-    // Sort products by effective price
     const sortedProducts = [...allProducts].sort((a, b) => {
       const priceA = getEffectivePrice(a);
       const priceB = getEffectivePrice(b);
-
-      if (query.sortBy === "price_asc") {
-        return priceA - priceB; // Low to high
-      } else {
-        return priceB - priceA; // High to low
-      }
+      return query.sortBy === "price_asc" ? priceA - priceB : priceB - priceA;
     });
 
-    // Apply pagination
     const paginatedProducts = sortedProducts.slice(skip, skip + limit);
-    const total = allProducts.length;
-
-    return { total, page, limit, products: paginatedProducts };
+    return {
+      total: allProducts.length,
+      page,
+      limit,
+      products: paginatedProducts,
+    };
   }
 
   // ============================================
-  // HANDLE OTHER SORTING (Normal Prisma query)
+  // HANDLE STANDARD SORTING
   // ============================================
   let orderBy: any = { createdAt: "desc" };
 
@@ -534,33 +486,8 @@ const getAllProducts = async (query: {
       take: limit,
       orderBy,
       select: {
-        id: true,
-        publicId: true,
-        name: true,
-        slug: true,
-        shortDescription: true,
-        status: true,
-        isFeatured: true,
-        averageRating: true,
-        reviewCount: true,
-        totalSold: true,
-        tags: true,
-        createdAt: true,
-        brand: {
-          select: { id: true, name: true, slug: true, logo: true },
-        },
-        categories: {
-          select: {
-            category: {
-              select: { id: true, name: true, slug: true },
-            },
-          },
-        },
-        images: {
-          where: { isPrimary: true },
-          take: 1,
-          select: { url: true, altText: true },
-        },
+        ...selectFields,
+        // Keep standard sorting variation optimization lightweight
         variants: {
           where: { isDefault: true, isActive: true },
           take: 1,
@@ -569,29 +496,8 @@ const getAllProducts = async (query: {
             price: true,
             comparePrice: true,
             stock: true,
-          },
-        },
-        flashSaleItem: {
-          where: {
-            isActive: true,
-            flashSale: {
-              status: "ACTIVE",
-              startsAt: { lte: new Date() },
-              endsAt: { gte: new Date() },
-            },
-          },
-          select: {
-            discountType: true,
-            discountValue: true,
-            salePrice: true,
-            originalPrice: true,
-            flashSale: {
-              select: {
-                title: true,
-                endsAt: true,
-                status: true,
-              },
-            },
+            name: true,
+            sku: true,
           },
         },
       },

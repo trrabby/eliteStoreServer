@@ -14,7 +14,7 @@ const router = Router();
 
 router.get("/featured", BrandController.getFeaturedBrands);
 
-router.get("/:slug", BrandController.getBrandBySlug);
+router.get("/slug/:slug", BrandController.getBrandBySlug);
 
 router.get("/", BrandController.getAllBrands);
 
