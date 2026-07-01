@@ -1415,6 +1415,12 @@ const updateOrderStatus = async (
           where: { id: vendorId },
           data: { vendorDue: { increment: vendorEarning } },
         });
+
+        // incriment totalSales for vendor
+        await tx.vendorProfile.update({
+          where: { id: vendorId },
+          data: { totalSales: { increment: vendorEarningBeforeCharge } },
+        });
       }
     }
 
@@ -1626,6 +1632,12 @@ const updateOrderStatusBulk = async (
             await tx.vendorProfile.update({
               where: { id: vendorId },
               data: { vendorDue: { increment: vendorEarning } },
+            });
+
+            // incriment totalSales for vendor
+            await tx.vendorProfile.update({
+              where: { id: vendorId },
+              data: { totalSales: { increment: vendorEarningBeforeCharge } },
             });
           }
         }

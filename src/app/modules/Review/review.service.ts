@@ -44,17 +44,16 @@ const createReview = async (
   },
   images?: string[],
 ) => {
+  // 1. Validate user
   const user = await prisma.user.findUnique({
     where: { email, isActive: true },
+    select: { id: true },
   });
-
   if (!user) {
     throw new AppError(httpStatus.NOT_FOUND, "User not found");
   }
 
-  console.log(payload);
-
-  // verify order item belongs to user and is delivered
+  // 2. Verify order item belongs to user and is delivered
   const orderItem = await prisma.orderItem.findFirst({
     where: {
       id: payload.orderItemId,
@@ -63,7 +62,7 @@ const createReview = async (
         status: "DELIVERED",
       },
     },
-    include: { order: true },
+    select: { id: true, productId: true },
   });
 
   if (!orderItem) {
@@ -80,7 +79,7 @@ const createReview = async (
     );
   }
 
-  // check already reviewed
+  // 3. Check if already reviewed
   const existing = await prisma.review.findFirst({
     where: {
       productId: payload.productId,
@@ -96,7 +95,27 @@ const createReview = async (
     );
   }
 
-  const review = await prisma.$transaction(async (tx) => {
+  // 4. Get product and vendor info (needed for vendor rating)
+  const product = await prisma.product.findUnique({
+    where: { id: payload.productId },
+    select: {
+      vendorId: true,
+      vendor: {
+        select: {
+          id: true,
+          rating: true,
+        },
+      },
+    },
+  });
+
+  if (!product) {
+    throw new AppError(httpStatus.NOT_FOUND, "Product not found");
+  }
+
+  // 5. Execute all writes in a single transaction
+  const result = await prisma.$transaction(async (tx) => {
+    // 5a. Create the review
     const created = await tx.review.create({
       data: {
         productId: payload.productId,
@@ -111,13 +130,45 @@ const createReview = async (
       },
     });
 
-    // sync product rating
+    // 5b. Sync product average rating
     await syncProductRating(payload.productId, tx);
+
+    // 5c. Update vendor rating if vendor exists
+    if (product.vendor) {
+      // Get current count of approved reviews for this vendor
+      const vendorReviewCount = await tx.review.count({
+        where: {
+          product: {
+            vendorId: product.vendorId,
+          },
+          status: "APPROVED",
+        },
+      });
+
+      // Get current vendor rating (from product.vendor.rating)
+      const currentVendorRating = Number(product.vendor.rating ?? 0);
+
+      // Compute new rating: (old_avg * old_count + new_rating) / (old_count + 1)
+      const newVendorRating =
+        vendorReviewCount === 0
+          ? payload.rating
+          : (currentVendorRating * vendorReviewCount + payload.rating) /
+            (vendorReviewCount + 1);
+
+      // Round to 2 decimal places
+      const roundedRating = Math.round(newVendorRating * 100) / 100;
+
+      // Update vendor profile rating
+      await tx.vendorProfile.update({
+        where: { id: product.vendor.id },
+        data: { rating: roundedRating },
+      });
+    }
 
     return created;
   });
 
-  return review;
+  return result;
 };
 
 // get reviews for a product — public
